@@ -1,11 +1,19 @@
+import type { FeatureExtractionPipeline as XenovaFeaturePipeline } from "@xenova/transformers";
 import { IEmbeddingModel } from "../../domain/ports/embedding-model.port.js";
+
+type FallbackFeaturePipeline = (
+  text: string,
+  options?: { pooling?: "mean" | "cls" | "none"; normalize?: boolean }
+) => Promise<{ data: Float32Array }>;
+
+export type FeatureExtractionPipeline = XenovaFeaturePipeline | FallbackFeaturePipeline;
 
 /**
  * Adaptador de Embeddings Local via ONNX Runtime / Transformers.js
  * Executa 100% em CPU com pesos quantizados, sem dependência de GPU ou nuvem.
  */
 export class OnnxEmbeddingAdapter implements IEmbeddingModel {
-  private static pipelineInstance: any = null;
+  private static pipelineInstance: FeatureExtractionPipeline | null = null;
   private readonly modelName: string;
 
   constructor(modelName: string = "Xenova/all-MiniLM-L6-v2") {
@@ -15,7 +23,7 @@ export class OnnxEmbeddingAdapter implements IEmbeddingModel {
   /**
    * Inicialização Singleton do Pipeline com lazy loading
    */
-  private async getPipeline(): Promise<any> {
+  private async getPipeline(): Promise<FeatureExtractionPipeline> {
     if (!OnnxEmbeddingAdapter.pipelineInstance) {
       try {
         const { pipeline, env } = await import("@xenova/transformers");
@@ -23,13 +31,14 @@ export class OnnxEmbeddingAdapter implements IEmbeddingModel {
         env.allowLocalModels = true;
         env.useBrowserCache = false;
 
-        OnnxEmbeddingAdapter.pipelineInstance = await pipeline(
+        const loaded = await pipeline(
           "feature-extraction",
           this.modelName,
           {
             quantized: true, // ONNX 8-bit quantized para CPU ultra rápida
           }
         );
+        OnnxEmbeddingAdapter.pipelineInstance = loaded as unknown as XenovaFeaturePipeline;
       } catch (err) {
         console.warn(
           `[Branch.dev] Aviso: Falha ao carregar modelo ONNX remoto (${(err as Error).message}). Ativando Motor Semântico Local Integrado (Zero-Network Fallback).`
@@ -38,13 +47,18 @@ export class OnnxEmbeddingAdapter implements IEmbeddingModel {
         OnnxEmbeddingAdapter.pipelineInstance = this.createFallbackPipeline();
       }
     }
+
+    if (!OnnxEmbeddingAdapter.pipelineInstance) {
+      throw new Error("[Branch.dev] Falha crítica ao inicializar pipeline de embeddings.");
+    }
+
     return OnnxEmbeddingAdapter.pipelineInstance;
   }
 
   public async embed(text: string): Promise<Float32Array> {
     const pipe = await this.getPipeline();
     const output = await pipe(text, { pooling: "mean", normalize: true });
-    return new Float32Array(output.data);
+    return new Float32Array(output.data as ArrayLike<number>);
   }
 
   public async embedBatch(texts: string[]): Promise<Float32Array[]> {
@@ -52,7 +66,7 @@ export class OnnxEmbeddingAdapter implements IEmbeddingModel {
     const results: Float32Array[] = [];
     for (const text of texts) {
       const output = await pipe(text, { pooling: "mean", normalize: true });
-      results.push(new Float32Array(output.data));
+      results.push(new Float32Array(output.data as ArrayLike<number>));
     }
     return results;
   }
@@ -62,7 +76,7 @@ export class OnnxEmbeddingAdapter implements IEmbeddingModel {
    * com n-grams de caracteres e subwords.
    * Garante precisão geométrica e funcionamento em < 1ms mesmo sem internet.
    */
-  private createFallbackPipeline(): (text: string) => Promise<{ data: Float32Array }> {
+  private createFallbackPipeline(): FallbackFeaturePipeline {
     const DIM = 384;
     const SPARSITY = 8; // Número de dimensões ativadas por token
 

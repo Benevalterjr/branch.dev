@@ -7,6 +7,7 @@ import {
   WorkflowQuestion,
   InferAnswer,
 } from "../dtos/workflow-request.dto.js";
+import { ChoiceInput } from "../dtos/decide-request.dto.js";
 
 /**
  * Caso de Uso: RunWorkflowUseCase
@@ -84,10 +85,10 @@ export class RunWorkflowUseCase {
       }
 
       if (q.type === "choice") {
-        const choices = (q as any).criteria ?? (q as any).choices ?? [];
+        const choices: ChoiceInput<string> = (q.criteria ?? q.choices ?? []) as ChoiceInput<string>;
         const res = await this.makeDecisionUseCase.execute({
           state: request.state,
-          choices: choices as any,
+          choices,
           task: instructions,
           temperature: q.temperature,
         });
@@ -105,11 +106,11 @@ export class RunWorkflowUseCase {
         ] as const;
       }
 
-      throw new Error(`Tipo de pergunta não suportado: ${(q as any).type}`);
+      throw new Error(`Tipo de pergunta não suportado: ${(q as { type: string }).type}`);
     });
 
     const evaluated = await Promise.all(promises);
-    const answers: Record<string, any> = {};
+    const answers: Record<string, unknown> = {};
     for (const [key, res] of evaluated) {
       answers[key] = res;
     }

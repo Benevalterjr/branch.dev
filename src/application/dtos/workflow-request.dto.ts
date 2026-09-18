@@ -33,7 +33,7 @@ export type ChoiceQuestion<C extends string = string> = {
 export type WorkflowQuestion =
   | NoulOrBooleanQuestion
   | ScoreQuestion
-  | ChoiceQuestion<any>;
+  | ChoiceQuestion<string>;
 
 /**
  * Inferência estática das opções do Choice
@@ -74,7 +74,7 @@ export type InferAnswer<Q extends WorkflowQuestion> =
         confidence: number;
         latencyMs: number;
       }
-    : Q extends ChoiceQuestion<any>
+    : Q extends ChoiceQuestion<string>
     ? {
         type: "choice";
         choice: InferChoice<Q>;
@@ -83,7 +83,7 @@ export type InferAnswer<Q extends WorkflowQuestion> =
         isOOD: boolean;
         latencyMs: number;
       }
-    : any;
+    : never;
 
 /**
  * DTO de Entrada para Workflow com múltiplas perguntas tipadas
