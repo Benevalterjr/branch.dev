@@ -1,0 +1,71 @@
+import { ICalibrator, CalibrationOptions } from "../../domain/ports/calibrator.port.js";
+import { ProbabilityDistribution } from "../../domain/entities/probability.vo.js";
+
+/**
+ * Adaptador de Calibração Estatística: PlattTemperatureCalibrator
+ * Implementa Temperature Scaling com Z-Score Standardization e Detecção de Out-of-Distribution (OOD).
+ */
+export class PlattTemperatureCalibrator implements ICalibrator {
+  private readonly defaultTemperature: number;
+  private readonly defaultOodThreshold: number;
+
+  constructor(defaultTemperature: number = 0.5, defaultOodThreshold: number = 0.15) {
+    this.defaultTemperature = defaultTemperature;
+    this.defaultOodThreshold = defaultOodThreshold;
+  }
+
+  public calibrate<T extends string = string>(
+    choices: readonly T[],
+    rawLogits: number[],
+    options?: CalibrationOptions
+  ): ProbabilityDistribution<T> {
+    const n = rawLogits.length;
+    const temperature = Math.max(0.05, options?.temperature ?? this.defaultTemperature);
+    const oodThreshold = options?.oodThreshold ?? this.defaultOodThreshold;
+
+    // 1. Verificação de Out-of-Distribution (Distância Mínima ao Espaço das Opções)
+    let maxRawLogit = -Infinity;
+    for (const val of rawLogits) {
+      if (val > maxRawLogit) maxRawLogit = val;
+    }
+    const isOOD = maxRawLogit < oodThreshold;
+
+    // 2. Média e Desvio Padrão (Z-score dos logits)
+    const mean = rawLogits.reduce((acc, val) => acc + val, 0) / n;
+    const variance = rawLogits.reduce((acc, val) => acc + (val - mean) ** 2, 0) / n;
+    const std = Math.sqrt(variance);
+
+    // Se a dispersão for nula (todas opções iguais), retorna distribuição uniforme
+    if (std < 1e-6) {
+      const uniform: Record<string, number> = {};
+      const prob = Number((1 / n).toFixed(4));
+      for (const c of choices) uniform[c] = prob;
+      return new ProbabilityDistribution<T>(uniform as Record<T, number>, isOOD);
+    }
+
+    // 3. Logits padronizados com escala de temperatura
+    const zScores = rawLogits.map((val) => (val - mean) / (std * temperature));
+
+    let maxZ = -Infinity;
+    for (const z of zScores) {
+      if (z > maxZ) maxZ = z;
+    }
+
+    // 4. Softmax numericamente estável
+    let sumExp = 0;
+    const expScores = zScores.map((z) => {
+      const exp = Math.exp(z - maxZ);
+      sumExp += exp;
+      return exp;
+    });
+
+    // 5. Normalização das probabilidades
+    const rawDistribution: Record<string, number> = {};
+    for (let i = 0; i < choices.length; i++) {
+      const choice = choices[i];
+      rawDistribution[choice] = sumExp > 0 ? expScores[i] / sumExp : 1 / n;
+    }
+
+    return new ProbabilityDistribution<T>(rawDistribution as Record<T, number>, isOOD);
+  }
+}

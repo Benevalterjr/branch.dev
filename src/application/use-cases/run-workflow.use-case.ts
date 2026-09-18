@@ -1,0 +1,130 @@
+import { MakeDecisionUseCase } from "./make-decision.use-case.js";
+import { EvaluateBooleanUseCase } from "./evaluate-boolean.use-case.js";
+import { EvaluateScoreUseCase } from "./evaluate-score.use-case.js";
+import {
+  WorkflowRequestDto,
+  WorkflowResponseDto,
+  WorkflowQuestion,
+  InferAnswer,
+} from "../dtos/workflow-request.dto.js";
+
+/**
+ * Caso de Uso: RunWorkflowUseCase
+ * Suporta o workflow multi-perguntas com inferência estrita de tipos via Mapped Types.
+ */
+export class RunWorkflowUseCase {
+  constructor(
+    private readonly makeDecisionUseCase: MakeDecisionUseCase,
+    private readonly evaluateBooleanUseCase: EvaluateBooleanUseCase,
+    private readonly evaluateScoreUseCase: EvaluateScoreUseCase
+  ) {}
+
+  public async execute<
+    TQuestions extends Record<string, WorkflowQuestion> = Record<string, WorkflowQuestion>
+  >(request: WorkflowRequestDto<TQuestions>): Promise<WorkflowResponseDto<TQuestions>> {
+    const startTime = performance.now();
+    const entries = Object.entries(request.questions);
+
+    const promises = entries.map(async ([key, q]) => {
+      const instructions = q.instructions ?? q.question ?? "";
+
+      if (q.type === "boolean" || q.type === "noul") {
+        const res = await this.evaluateBooleanUseCase.execute({
+          state: request.state,
+          question: instructions,
+          affirmativeDescription: q.affirmativeDescription,
+          negativeDescription: q.negativeDescription,
+          temperature: q.temperature,
+        });
+
+        return [
+          key,
+          {
+            type: q.type,
+            noul: res.probability,
+            value: res.value,
+            probability: res.probability,
+            confidence: res.confidence,
+            isOOD: res.isOOD,
+            latencyMs: res.latencyMs,
+          },
+        ] as const;
+      }
+
+      if (q.type === "score") {
+        let scale: Record<number, string> = {};
+        if (Array.isArray(q.criteria)) {
+          q.criteria.forEach((desc, idx) => {
+            scale[idx] = desc;
+          });
+        } else if (q.criteria) {
+          scale = q.criteria as Record<number, string>;
+        } else if (q.scale) {
+          scale = q.scale;
+        }
+
+        const res = await this.evaluateScoreUseCase.execute({
+          state: request.state,
+          question: instructions,
+          scale,
+          temperature: q.temperature,
+        });
+
+        return [
+          key,
+          {
+            type: "score",
+            score: res.score,
+            legend: scale,
+            probabilities: res.probabilities,
+            confidence: res.confidence,
+            latencyMs: res.latencyMs,
+          },
+        ] as const;
+      }
+
+      if (q.type === "choice") {
+        const choices = (q as any).criteria ?? (q as any).choices ?? [];
+        const res = await this.makeDecisionUseCase.execute({
+          state: request.state,
+          choices: choices as any,
+          task: instructions,
+          temperature: q.temperature,
+        });
+
+        return [
+          key,
+          {
+            type: "choice",
+            choice: res.winner,
+            probabilities: res.probabilities,
+            confidence: res.confidence,
+            isOOD: res.isOOD,
+            latencyMs: res.latencyMs,
+          },
+        ] as const;
+      }
+
+      throw new Error(`Tipo de pergunta não suportado: ${(q as any).type}`);
+    });
+
+    const evaluated = await Promise.all(promises);
+    const answers: Record<string, any> = {};
+    for (const [key, res] of evaluated) {
+      answers[key] = res;
+    }
+
+    const totalLatencyMs = Number((performance.now() - startTime).toFixed(2));
+
+    return {
+      model: request.model ?? "branch-local-cpu",
+      answers: answers as { [K in keyof TQuestions]: InferAnswer<TQuestions[K]> },
+      totalLatencyMs,
+      usage: {
+        input_tokens: 0,
+        output_tokens: 0,
+        cost_usd: 0.0,
+      },
+    };
+  }
+}
