@@ -10,7 +10,10 @@
     "example:churn": "tsx examples/churn-risk.ts",
     "example:router": "tsx examples/smart-router.ts",
     "example:parity": "tsx examples/typesafe-parity.ts",
-    "benchmark": "tsx examples/benchmark.ts"
+    "example:multilingual": "tsx examples/multilingual-test.ts",
+    "example:adaptive": "tsx examples/adaptive-learning.ts",
+    "benchmark": "tsx examples/benchmark.ts",
+    "benchmark:llm": "tsx examples/benchmark-llm-comparison.ts"
   },
   "keywords": [
     "ai",

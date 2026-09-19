@@ -31,7 +31,10 @@ src/
 │   ├── ports/                      # Interfaces / Contratos de Domínio
 │   │   ├── embedding-model.port.ts # Porta de vetorização
 │   │   ├── calibrator.port.ts      # Porta para calibração estatística de logits
-│   │   └── decision-engine.port.ts # Porta abstrata do motor de decisão
+│   │   ├── decision-engine.port.ts # Porta abstrata do motor de decisão
+│   │   ├── adaptive-calibrator.port.ts # Porta para calibração adaptativa online
+│   │   ├── prototype-store.port.ts # Porta para centróides e few-shot exemplars
+│   │   └── feedback-store.port.ts  # Porta para rastreabilidade e auditoria de feedbacks
 │   └── exceptions/
 │       └── domain-exceptions.ts    # Exceções (LowConfidenceException, InvalidState)
 │
@@ -44,15 +47,18 @@ src/
 │
 ├── infrastructure/                 # Frameworks & Drivers
 │   ├── adapters/
-│   │   ├── onnx-embedding.adapter.ts      # Adaptador ONNX + Resilient Local Sparse Projection
-│   │   ├── platt-calibrator.adapter.ts    # Calibrador Platt com Z-Score Standardization
-│   │   └── local-decision-engine.adapter.ts # Motor não-autoregressivo de passada única
+│   │   ├── onnx-embedding.adapter.ts          # Adaptador ONNX + Resilient Local Sparse Projection
+│   │   ├── platt-calibrator.adapter.ts        # Calibrador Platt com Z-Score Standardization
+│   │   ├── adaptive-platt-calibrator.adapter.ts # Calibrador adaptativo com penalidade de overconfidence
+│   │   ├── in-memory-prototype-store.adapter.ts # Protótipos L2 e few-shot centróides em RAM
+│   │   ├── in-memory-feedback-store.adapter.ts  # Histórico e auditoria de métricas em RAM
+│   │   └── local-decision-engine.adapter.ts   # Motor não-autoregressivo com cache de escolhas
 │   └── quant/
 │       └── turbo-quant.ts          # Primitivas de quantização rápida e produto escalar (arXiv:2504.19874)
 │
 └── presentation/                   # Developer Experience (DevEx)
-    ├── branch-client.ts            # Fachada configurável
-    └── index.ts                    # Função global decide() e re-exports
+    ├── branch-client.ts            # Fachada configurável com feedback e exemplares
+    └── index.ts                    # Função global decide(), configure() e re-exports
 ```
 
 ---
@@ -159,7 +165,30 @@ if (result.answers.isRefund.probability > 0.8 && result.answers.duplicateEvidenc
 }
 ```
 
-### 3. Fail-Safe com Trava de Confiabilidade
+### 5. Suporte Multilíngue e Modelos Customizados (PT-BR, ES, 50+ idiomas)
+
+Por padrão, o Branch.dev utiliza `Xenova/all-MiniLM-L6-v2` (~22MB, ultrarrápido em inglês). Para máxima precisão em **Português** e mais de 50 idiomas, você pode configurar o modelo global ou instanciar o `BranchClient`:
+
+```typescript
+import { BranchClient, BRANCH_EMBEDDING_MODELS, configure } from "@branch/core";
+
+// Opção A: Reconfigurar globalmente (afeta decide(), boolean(), score(), workflow())
+configure({
+  modelName: BRANCH_EMBEDDING_MODELS.MULTILINGUAL_BALANCED, // Xenova/paraphrase-multilingual-MiniLM-L12-v2 (~118MB)
+});
+
+// Opção B: Instância dedicada
+const client = new BranchClient({
+  modelName: BRANCH_EMBEDDING_MODELS.MULTILINGUAL_BALANCED,
+});
+```
+
+Modelos pré-configurados disponíveis via `BRANCH_EMBEDDING_MODELS`:
+* `FAST_EN`: `Xenova/all-MiniLM-L6-v2` (384 dim, ~22MB, latência mínima em inglês)
+* `MULTILINGUAL_BALANCED`: `Xenova/paraphrase-multilingual-MiniLM-L12-v2` (384 dim, ~118MB, recomendado para PT-BR e 50+ idiomas)
+* `MULTILINGUAL_E5_SMALL`: `Xenova/multilingual-e5-small` (384 dim, ~120MB, alta precisão semântica)
+
+### 6. Fail-Safe com Trava de Confiabilidade
 
 ```typescript
 // Se a IA não tiver pelo menos 80% de certeza, envia para um humano
@@ -173,11 +202,63 @@ try {
 }
 ```
 
+### 7. Aprendizado Contínuo (Few-Shot Prototypes & Calibração Adaptativa)
+
+Sem modelos pesados ou re-treinamentos caros, o Branch.dev aprende com feedbacks de operadores e exemplos em produção mantendo inferência em **< 2ms**:
+
+```typescript
+import {
+  BranchClient,
+  InMemoryPrototypeStore,
+  InMemoryFeedbackStore,
+  BRANCH_EMBEDDING_MODELS,
+} from "@branch/core";
+
+const client = new BranchClient({
+  modelName: BRANCH_EMBEDDING_MODELS.MULTILINGUAL_BALANCED,
+  adaptiveCalibrator: true, // Ajusta temperatura dinamicamente com base em acertos/erros
+  prototypeStore: new InMemoryPrototypeStore(), // Centróides semânticos com interpolação L2
+  feedbackStore: new InMemoryFeedbackStore(), // Auditoria e métricas de acurácia
+});
+
+// 1. Enriquecer uma escolha com exemplos empíricos do mundo real:
+await client.addExample("devops", {
+  log: "Pod redis reiniciando por OOM killer e timeout no ingress",
+});
+
+// 2. Registrar feedback humano em produção para refinar a calibração:
+await client.recordFeedback({
+  choice: "devops",
+  wasCorrect: true,
+  confidence: 0.95,
+  addAsExample: true,
+});
+```
+
 ---
 
-## 📊 Benchmark Real em CPU (Sem GPU)
+## 📊 Benchmarks Reais
 
-Executado em ambiente local (Node.js v20, CPU comum):
+### 1. Branch.dev vs LLM em Nuvem (Qwen 3.8 27B na Groq / Gemini)
+
+Executado comparando decisões idênticas de *Smart If-Statement* contra modelos de ponta em nuvem:
+
+```bash
+npm run benchmark:llm
+```
+
+| Métrica / Critério | LLM em Nuvem (Qwen na Groq / Gemini) | **Branch.dev (`@branch/core`)** |
+| :--- | :--- | :--- |
+| **Custo de Token** | ~$0.15 a $2.50 / 1k decisões (500+ tokens/caso) | **$0.00 (Grátis, zero tokens)** |
+| **Latência no Brasil** | 240 ms – 900 ms *(limitado por tráfego de rede e rota internacional)* | **In-Process local (zero rede)** |
+| **Privacidade / LGPD** | Dados do cliente trafegam para servidores externos | **100% Local (dados nunca saem da memória)** |
+| **Risco de Hallucination / JSON** | Risco de formato inválido, requer retry/regex | **Zero (retorno tipado estrito via TypeScript)** |
+| **Resiliência Offline** | Dependência obrigatória de internet / API | **100% Funcional offline sem conexão** |
+| **Throughput em Produção** | Sujeito a Rate Limits (HTTP 429) e filas | **Decisões concorrentes ilimitadas em CPU** |
+
+### 2. Micro-Benchmark de Inferência TurboQuant (CPU Pura)
+
+Executado em ambiente local (Node.js, CPU comum sem GPU):
 
 ```bash
 npm run benchmark
@@ -185,8 +266,22 @@ npm run benchmark
 
 | Métrica | LLM Tradicional (ex: GPT-4o-mini) | TypeSafe / Jev | **Branch.dev** |
 | :--- | :--- | :--- | :--- |
-| **Latência Média** | 1.800 ms – 5.000 ms | 70 ms – 500 ms | **1.35 ms** |
-| **Throughput** | ~0.5 req/s | ~10 req/s | **671 decisões/s** |
-| **Custo de Token** | $0.15 a $5.00 / 1k req | Preço de nuvem | **$0.00 (Grátis)** |
-| **Consumo de Memória** | Gigabytes de VRAM | Servidor externo | **18 MB de RAM** |
+| **Latência da Decisão Geométrica** | 1.800 ms – 5.000 ms | 70 ms – 500 ms | **< 2 ms** |
+| **Consumo de Memória** | Gigabytes de VRAM | Servidor externo | **~25 MB de RAM** |
 | **Dependência Externa** | Chave OpenAI / Cartão | Nuvem proprietária | **Zero (100% Local)** |
+
+---
+
+## 💻 Scripts Disponíveis
+
+```bash
+npm run build                 # Compila o projeto TypeScript para dist/
+npm run typecheck             # Validação estrita de tipos (zero erros)
+npm run example:churn         # Predição de risco de churn em português
+npm run example:router        # Roteamento inteligente de tickets de suporte
+npm run example:parity        # Paridade com as 3 primitivas da TypeSafe (Boolean, Score, Choice)
+npm run example:multilingual  # Teste prático do modelo multilíngue (PT-BR)
+npm run example:adaptive      # Aprendizado contínuo com Few-Shot Prototypes e feedback
+npm run benchmark             # Micro-benchmark de throughput de CPU
+npm run benchmark:llm         # Benchmark comparativo: Branch.dev vs Qwen (Groq) / Gemini
+```

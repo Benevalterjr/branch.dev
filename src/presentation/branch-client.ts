@@ -1,5 +1,10 @@
-import { OnnxEmbeddingAdapter } from "../infrastructure/adapters/onnx-embedding.adapter.js";
+import {
+  OnnxEmbeddingAdapter,
+  SupportedEmbeddingModel,
+  BRANCH_EMBEDDING_MODELS,
+} from "../infrastructure/adapters/onnx-embedding.adapter.js";
 import { PlattTemperatureCalibrator } from "../infrastructure/adapters/platt-calibrator.adapter.js";
+import { AdaptivePlattCalibrator } from "../infrastructure/adapters/adaptive-platt-calibrator.adapter.js";
 import { LocalDecisionEngine } from "../infrastructure/adapters/local-decision-engine.adapter.js";
 import { MakeDecisionUseCase } from "../application/use-cases/make-decision.use-case.js";
 import { EvaluateBooleanUseCase } from "../application/use-cases/evaluate-boolean.use-case.js";
@@ -18,28 +23,72 @@ import {
 
 import { IEmbeddingModel } from "../domain/ports/embedding-model.port.js";
 import { ICalibrator } from "../domain/ports/calibrator.port.js";
+import { IAdaptiveCalibrator } from "../domain/ports/adaptive-calibrator.port.js";
+import { IPrototypeStore } from "../domain/ports/prototype-store.port.js";
+import { IFeedbackStore } from "../domain/ports/feedback-store.port.js";
+import { StateContext } from "../domain/entities/state-context.vo.js";
 
 export interface BranchClientConfig {
+  /**
+   * Nome do modelo ONNX / HuggingFace ou preset do BRANCH_EMBEDDING_MODELS.
+   * Padrão: BRANCH_EMBEDDING_MODELS.FAST_EN ("Xenova/all-MiniLM-L6-v2")
+   */
+  modelName?: SupportedEmbeddingModel;
+  /** Instância customizada de IEmbeddingModel (sobrescreve modelName se fornecido) */
   embeddingModel?: IEmbeddingModel;
+  /** Instância customizada de calibrador */
   calibrator?: ICalibrator;
+  /** Habilita calibrador adaptativo ou injeta instância de IAdaptiveCalibrator */
+  adaptiveCalibrator?: boolean | IAdaptiveCalibrator;
+  /** Armazenamento de protótipos empíricos (Few-Shot Exemplars) */
+  prototypeStore?: IPrototypeStore;
+  /** Armazenamento e auditoria de feedbacks operacionais */
+  feedbackStore?: IFeedbackStore;
+  /** Temperatura padrão para Platt scaling */
   defaultTemperature?: number;
 }
 
 /**
  * BranchClient
- * Fachada completa com as 3 primitivas (Choice, Boolean/Noul, Score) e Workflow multi-questões.
+ * Fachada completa com as 3 primitivas (Choice, Boolean/Noul, Score), Workflow multi-questões,
+ * suporte a protótipos semânticos e calibração adaptativa contínua.
  */
 export class BranchClient {
+  private readonly embeddingModel: IEmbeddingModel;
+  private readonly calibrator: ICalibrator;
+  private readonly prototypeStore?: IPrototypeStore;
+  private readonly feedbackStore?: IFeedbackStore;
+
   private readonly makeDecisionUseCase: MakeDecisionUseCase;
   private readonly evaluateBooleanUseCase: EvaluateBooleanUseCase;
   private readonly evaluateScoreUseCase: EvaluateScoreUseCase;
   private readonly runWorkflowUseCase: RunWorkflowUseCase;
 
   constructor(config: BranchClientConfig = {}) {
-    const embedding = config.embeddingModel ?? new OnnxEmbeddingAdapter();
-    const calibrator =
-      config.calibrator ?? new PlattTemperatureCalibrator(config.defaultTemperature ?? 0.5);
-    const engine = new LocalDecisionEngine(embedding, calibrator);
+    this.embeddingModel =
+      config.embeddingModel ??
+      new OnnxEmbeddingAdapter(config.modelName ?? BRANCH_EMBEDDING_MODELS.FAST_EN);
+
+    if (config.calibrator) {
+      this.calibrator = config.calibrator;
+    } else if (config.adaptiveCalibrator === true) {
+      this.calibrator = new AdaptivePlattCalibrator({
+        initialTemperature: config.defaultTemperature ?? 0.5,
+      });
+    } else if (typeof config.adaptiveCalibrator === "object") {
+      this.calibrator = config.adaptiveCalibrator;
+    } else {
+      this.calibrator = new PlattTemperatureCalibrator(config.defaultTemperature ?? 0.5);
+    }
+
+    this.prototypeStore = config.prototypeStore;
+    this.feedbackStore = config.feedbackStore;
+
+    const engine = new LocalDecisionEngine(
+      this.embeddingModel,
+      this.calibrator,
+      this.prototypeStore
+    );
 
     this.makeDecisionUseCase = new MakeDecisionUseCase(engine);
     this.evaluateBooleanUseCase = new EvaluateBooleanUseCase(engine);
@@ -81,5 +130,97 @@ export class BranchClient {
     TQuestions extends Record<string, WorkflowQuestion> = Record<string, WorkflowQuestion>
   >(request: WorkflowRequestDto<TQuestions>): Promise<WorkflowResponseDto<TQuestions>> {
     return this.runWorkflowUseCase.execute<TQuestions>(request);
+  }
+
+  /**
+   * Registra um exemplo empírico confirmado para uma escolha no PrototypeStore.
+   * Converte automaticamente o objeto/texto de estado em embedding vetorial.
+   */
+  public async addExample(choice: string, state: unknown): Promise<void> {
+    if (!this.prototypeStore) {
+      throw new Error(
+        "[Branch.dev] PrototypeStore não configurado no BranchClient. Inicialize com 'prototypeStore' (ex: new InMemoryPrototypeStore())."
+      );
+    }
+    const stateContext = state instanceof StateContext ? state : StateContext.from(state);
+    const emb = await this.embeddingModel.embed(stateContext.canonicalText);
+    await this.prototypeStore.addExample(choice, emb);
+  }
+
+  /**
+   * Registra feedback operacional de validação de decisão:
+   * 1. Atualiza dinamicamente a temperatura do IAdaptiveCalibrator (se ativo)
+   * 2. Persiste histórico de auditoria no IFeedbackStore (se configurado)
+   * 3. Opcionalmente adiciona o estado como exemplo positivo no PrototypeStore (se wasCorrect = true e addAsExample = true)
+   */
+  public async recordFeedback(params: {
+    choice: string;
+    wasCorrect: boolean;
+    state?: unknown;
+    confidence?: number;
+    logits?: number[];
+    predictedIndex?: number;
+    addAsExample?: boolean;
+    metadata?: Record<string, unknown>;
+  }): Promise<void> {
+    const confidence = params.confidence ?? 0.5;
+
+    // 1. Atualização do calibrador adaptativo
+    if (
+      "recordFeedback" in this.calibrator &&
+      typeof (this.calibrator as any).recordFeedback === "function"
+    ) {
+      (this.calibrator as IAdaptiveCalibrator).recordFeedback({
+        wasCorrect: params.wasCorrect,
+        confidence,
+        logits: params.logits,
+        predictedIndex: params.predictedIndex,
+      });
+    }
+
+    // 2. Persistência de feedback para auditoria
+    if (this.feedbackStore) {
+      let stateHash: string | undefined;
+      if (params.state) {
+        const stateContext =
+          params.state instanceof StateContext ? params.state : StateContext.from(params.state);
+        stateHash = stateContext.canonicalText.substring(0, 100);
+      }
+
+      await this.feedbackStore.record({
+        id: `fb_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+        choice: params.choice,
+        wasCorrect: params.wasCorrect,
+        confidenceAtDecision: confidence,
+        timestamp: Date.now(),
+        stateHash,
+        metadata: params.metadata,
+      });
+    }
+
+    // 3. Adição automática a protótipos se confirmado
+    if (params.wasCorrect && params.addAsExample && params.state && this.prototypeStore) {
+      await this.addExample(params.choice, params.state);
+    }
+  }
+
+  /** Retorna a instância do calibrador utilizado pelo cliente */
+  public getCalibrator(): ICalibrator {
+    return this.calibrator;
+  }
+
+  /** Retorna a instância do PrototypeStore (ou undefined se não configurado) */
+  public getPrototypeStore(): IPrototypeStore | undefined {
+    return this.prototypeStore;
+  }
+
+  /** Retorna a instância do FeedbackStore (ou undefined se não configurado) */
+  public getFeedbackStore(): IFeedbackStore | undefined {
+    return this.feedbackStore;
+  }
+
+  /** Retorna a instância do modelo de embeddings configurado */
+  public getEmbeddingModel(): IEmbeddingModel {
+    return this.embeddingModel;
   }
 }

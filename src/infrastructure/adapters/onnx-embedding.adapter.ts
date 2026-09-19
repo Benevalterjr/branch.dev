@@ -8,51 +8,79 @@ type FallbackFeaturePipeline = (
 
 export type FeatureExtractionPipeline = XenovaFeaturePipeline | FallbackFeaturePipeline;
 
+export const BRANCH_EMBEDDING_MODELS = {
+  /** Ultra-rápido, otimizado para inglês (~22MB quantizado) */
+  FAST_EN: "Xenova/all-MiniLM-L6-v2",
+  /** Recomendado: Multilíngue balanceado (PT-BR, ES, 50+ idiomas, 384 dim, ~118MB quantizado) */
+  MULTILINGUAL_BALANCED: "Xenova/paraphrase-multilingual-MiniLM-L12-v2",
+  /** Alta qualidade semântica multilíngue (100+ idiomas, 384 dim, ~120MB quantizado) */
+  MULTILINGUAL_E5_SMALL: "Xenova/multilingual-e5-small",
+  /** Qualidade superior multilíngue (100+ idiomas, 768 dim, ~280-350MB quantizado) */
+  MULTILINGUAL_E5_BASE: "Xenova/multilingual-e5-base",
+} as const;
+
+export type SupportedEmbeddingModel =
+  | (typeof BRANCH_EMBEDDING_MODELS)[keyof typeof BRANCH_EMBEDDING_MODELS]
+  | (string & {});
+
 /**
  * Adaptador de Embeddings Local via ONNX Runtime / Transformers.js
  * Executa 100% em CPU com pesos quantizados, sem dependência de GPU ou nuvem.
  */
 export class OnnxEmbeddingAdapter implements IEmbeddingModel {
-  private static pipelineInstance: FeatureExtractionPipeline | null = null;
+  private static pipelineInstances = new Map<string, FeatureExtractionPipeline>();
+  private static loadingPromises = new Map<string, Promise<FeatureExtractionPipeline>>();
   private readonly modelName: string;
 
-  constructor(modelName: string = "Xenova/all-MiniLM-L6-v2") {
+  constructor(modelName: SupportedEmbeddingModel = BRANCH_EMBEDDING_MODELS.FAST_EN) {
     this.modelName = modelName;
   }
 
   /**
-   * Inicialização Singleton do Pipeline com lazy loading
+   * Inicialização do Pipeline com lazy loading e cache indexado por modelo
    */
   private async getPipeline(): Promise<FeatureExtractionPipeline> {
-    if (!OnnxEmbeddingAdapter.pipelineInstance) {
-      try {
-        const { pipeline, env } = await import("@xenova/transformers");
-        // Desativa telemetria e permite carregamento local
-        env.allowLocalModels = true;
-        env.useBrowserCache = false;
-
-        const loaded = await pipeline(
-          "feature-extraction",
-          this.modelName,
-          {
-            quantized: true, // ONNX 8-bit quantized para CPU ultra rápida
-          }
-        );
-        OnnxEmbeddingAdapter.pipelineInstance = loaded as unknown as XenovaFeaturePipeline;
-      } catch (err) {
-        console.warn(
-          `[Branch.dev] Aviso: Falha ao carregar modelo ONNX remoto (${(err as Error).message}). Ativando Motor Semântico Local Integrado (Zero-Network Fallback).`
-        );
-        // Fallback resiliente caso haja restrição de firewall/rede
-        OnnxEmbeddingAdapter.pipelineInstance = this.createFallbackPipeline();
-      }
+    const cached = OnnxEmbeddingAdapter.pipelineInstances.get(this.modelName);
+    if (cached) {
+      return cached;
     }
 
-    if (!OnnxEmbeddingAdapter.pipelineInstance) {
-      throw new Error("[Branch.dev] Falha crítica ao inicializar pipeline de embeddings.");
+    let loadPromise = OnnxEmbeddingAdapter.loadingPromises.get(this.modelName);
+    if (!loadPromise) {
+      loadPromise = (async () => {
+        try {
+          const { pipeline, env } = await import("@xenova/transformers");
+          // Desativa telemetria e permite carregamento local
+          env.allowLocalModels = true;
+          env.useBrowserCache = false;
+
+          const loaded = await pipeline(
+            "feature-extraction",
+            this.modelName,
+            {
+              quantized: true, // ONNX 8-bit quantized para CPU ultra rápida
+            }
+          );
+          const pipe = loaded as unknown as XenovaFeaturePipeline;
+          OnnxEmbeddingAdapter.pipelineInstances.set(this.modelName, pipe);
+          return pipe;
+        } catch (err) {
+          console.warn(
+            `[Branch.dev] Aviso: Falha ao carregar modelo ONNX '${this.modelName}' (${(err as Error).message}). Ativando Motor Semântico Local Integrado (Zero-Network Fallback).`
+          );
+          // Fallback resiliente caso haja restrição de firewall/rede
+          const fallback = this.createFallbackPipeline();
+          OnnxEmbeddingAdapter.pipelineInstances.set(this.modelName, fallback);
+          return fallback;
+        } finally {
+          OnnxEmbeddingAdapter.loadingPromises.delete(this.modelName);
+        }
+      })();
+
+      OnnxEmbeddingAdapter.loadingPromises.set(this.modelName, loadPromise);
     }
 
-    return OnnxEmbeddingAdapter.pipelineInstance;
+    return loadPromise;
   }
 
   public async embed(text: string): Promise<Float32Array> {
@@ -62,13 +90,40 @@ export class OnnxEmbeddingAdapter implements IEmbeddingModel {
   }
 
   public async embedBatch(texts: string[]): Promise<Float32Array[]> {
+    if (texts.length === 0) return [];
     const pipe = await this.getPipeline();
-    const results: Float32Array[] = [];
-    for (const text of texts) {
-      const output = await pipe(text, { pooling: "mean", normalize: true });
-      results.push(new Float32Array(output.data as ArrayLike<number>));
+
+    try {
+      // Execução em lote nativa na engine ONNX (True Tensor Batching)
+      const output = await (pipe as any)(texts, { pooling: "mean", normalize: true });
+
+      if (output && output.dims && output.dims.length >= 2 && output.data) {
+        const dim = output.dims[1];
+        const results: Float32Array[] = new Array(texts.length);
+        for (let i = 0; i < texts.length; i++) {
+          const start = i * dim;
+          results[i] = new Float32Array(output.data.buffer, output.data.byteOffset + start * 4, dim);
+        }
+        return results;
+      }
+
+      if (Array.isArray(output)) {
+        return output.map((item: any) => new Float32Array(item.data as ArrayLike<number>));
+      }
+
+      if (texts.length === 1 && output && output.data) {
+        return [new Float32Array(output.data as ArrayLike<number>)];
+      }
+    } catch {
+      // Fallback gracioso para processamento unitário caso o pipeline não suporte lote de strings
     }
-    return results;
+
+    const fallbackResults: Float32Array[] = [];
+    for (const text of texts) {
+      const output = await (pipe as any)(text, { pooling: "mean", normalize: true });
+      fallbackResults.push(new Float32Array(output.data as ArrayLike<number>));
+    }
+    return fallbackResults;
   }
 
   /**

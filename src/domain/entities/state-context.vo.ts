@@ -16,6 +16,13 @@ export class StateContext {
     this._canonicalText = this.canonicalize(state);
   }
 
+  /**
+   * Converte qualquer objeto de estado para StateContext com idempotência.
+   */
+  public static from(state: unknown): StateContext {
+    return state instanceof StateContext ? state : new StateContext(state);
+  }
+
   public get raw(): unknown {
     return this._raw;
   }
