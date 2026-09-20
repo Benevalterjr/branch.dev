@@ -285,4 +285,5 @@ npm run example:adaptive      # Aprendizado contínuo com Few-Shot Prototypes e 
 npm run test:adaptive         # Validação empírica do otimizador SGD no Brier Score
 npm run benchmark             # Micro-benchmark de throughput de CPU
 npm run benchmark:llm         # Benchmark comparativo: Branch.dev vs Qwen (Groq) / Gemini
+npm run benchmark:asteroid    # Simulação aeroespacial 3D sob pressão: Branch.dev vs Groq (Qwen)
 ```
