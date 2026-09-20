@@ -14,7 +14,8 @@
     "example:adaptive": "tsx examples/adaptive-learning.ts",
     "test:adaptive": "tsx examples/test-adaptive-sgd.ts",
     "benchmark": "tsx examples/benchmark.ts",
-    "benchmark:llm": "tsx examples/benchmark-llm-comparison.ts"
+    "benchmark:llm": "tsx examples/benchmark-llm-comparison.ts",
+    "benchmark:asteroid": "tsx examples/asteroid-benchmark.ts"
   },
   "keywords": [
     "ai",
