@@ -2,27 +2,18 @@ import { decide, configure, BRANCH_EMBEDDING_MODELS } from "../src/index.js";
 import * as fs from "fs";
 import * as path from "path";
 
-// 1. Resolução da Chave da Groq
+// 1. Resolução da Chave da Groq via CLI ou Env Var local
 function resolveGroqApiKey(): string {
-  // A. Argumento de linha de comando
   const cliArg = process.argv[2] || "";
   if (cliArg.startsWith("gsk_")) return cliArg;
 
-  // B. Variável de ambiente
   if (process.env.GROQ_API_KEY) return process.env.GROQ_API_KEY;
-
-  // C. Arquivo salvo no Desktop
-  const desktopKeyPath = "c:\\Users\\User\\Desktop\\TUDO\\api-key-groq-langflow.txt";
-  if (fs.existsSync(desktopKeyPath)) {
-    const fileContent = fs.readFileSync(desktopKeyPath, "utf8").trim();
-    if (fileContent.startsWith("gsk_")) return fileContent;
-  }
 
   return "";
 }
 
 const GROQ_API_KEY = resolveGroqApiKey();
-const GROQ_MODEL = process.env.GROQ_MODEL || "qwen-2.5-32b"; // Suporta Qwen na Groq
+const GROQ_MODEL = process.env.GROQ_MODEL || "qwen/qwen3.8-27b";
 
 interface AsteroidScenario {
   id: string;
