@@ -83,32 +83,17 @@ export class LocalDecisionEngine implements IDecisionEngine {
       }
     }
 
-    // 3. Extrai embeddings de estado (em lote único se contexto e estado direto divergirem)
-    let stateVector: Float32Array;
-    let directStateVector: Float32Array;
+    // 3. Extrai embedding do estado no contexto da tarefa (passada única otimizada)
+    const stateVector = await this.embeddingModel.embed(contextPrompt);
 
-    if (hasTask && contextPrompt !== params.state.canonicalText) {
-      const stateBatch = await this.embeddingModel.embedBatch([
-        contextPrompt,
-        params.state.canonicalText,
-      ]);
-      stateVector = stateBatch[0];
-      directStateVector = stateBatch[1];
-    } else {
-      stateVector = await this.embeddingModel.embed(params.state.canonicalText);
-      directStateVector = stateVector;
-    }
-
-    // 4. Calcula similaridades de cosseno (logits brutos) e similaridade pura para OOD
+    // 4. Calcula similaridades de cosseno (logits brutos) e similaridade para OOD
     const rawLogits: number[] = new Array(params.candidates.length);
     let maxPureSim = -Infinity;
 
     for (let i = 0; i < params.candidates.length; i++) {
       const similarity = TurboQuant.cosineSimilarity(stateVector, choiceVectors[i]);
       rawLogits[i] = similarity;
-
-      const pureSim = TurboQuant.cosineSimilarity(directStateVector, choiceVectors[i]);
-      if (pureSim > maxPureSim) maxPureSim = pureSim;
+      if (similarity > maxPureSim) maxPureSim = similarity;
     }
 
     // 5. Se a similaridade semântica direta for inferior a 0.15, ativa salvaguarda OOD
