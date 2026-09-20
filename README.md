@@ -282,6 +282,7 @@ npm run example:router        # Roteamento inteligente de tickets de suporte
 npm run example:parity        # Paridade com as 3 primitivas da TypeSafe (Boolean, Score, Choice)
 npm run example:multilingual  # Teste prático do modelo multilíngue (PT-BR)
 npm run example:adaptive      # Aprendizado contínuo com Few-Shot Prototypes e feedback
+npm run test:adaptive         # Validação empírica do otimizador SGD no Brier Score
 npm run benchmark             # Micro-benchmark de throughput de CPU
 npm run benchmark:llm         # Benchmark comparativo: Branch.dev vs Qwen (Groq) / Gemini
 ```

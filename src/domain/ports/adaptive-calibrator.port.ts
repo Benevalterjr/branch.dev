@@ -1,4 +1,4 @@
-﻿import { ICalibrator } from "./calibrator.port.js";
+import { ICalibrator } from "./calibrator.port.js";
 
 /**
  * Parâmetros para atualização adaptativa do calibrador baseada em feedback de execução.
@@ -23,6 +23,27 @@ export interface FeedbackCalibrationParams {
    * Se a decisão do motor foi considerada correta pelo validador/humano.
    */
   wasCorrect: boolean;
+
+  /**
+   * Índice da escolha que era a correta (opcional, útil quando conhecido em feedbacks negativos).
+   */
+  actualIndex?: number;
+}
+
+/**
+ * Métricas de rastreabilidade do aprendizado de calibração em tempo real.
+ */
+export interface CalibrationMetrics {
+  /** Temperatura de calibração atual */
+  temperature: number;
+  /** Total de feedbacks de calibração processados */
+  totalFeedbacks: number;
+  /** Brier score médio móvel ponderado (menor é melhor, 0.0 é calibração perfeita) */
+  runningBrierScore: number;
+  /** Taxa acumulada de acurácia observada */
+  accuracy: number;
+  /** Magnitude do último gradiente dL/dT calculado */
+  lastGradient: number;
 }
 
 /**
@@ -45,4 +66,14 @@ export interface IAdaptiveCalibrator extends ICalibrator {
    * Ajusta explicitamente a temperatura de scaling.
    */
   setTemperature(temperature: number): void;
+
+  /**
+   * Retorna as métricas estatísticas e de calibração atuais.
+   */
+  getMetrics?(): CalibrationMetrics;
+
+  /**
+   * Reseta o estado do otimizador para os parâmetros iniciais.
+   */
+  reset?(): void;
 }
