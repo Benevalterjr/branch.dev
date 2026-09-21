@@ -1,3 +1,5 @@
+import { EmptyDistributionException } from "../exceptions/domain-exceptions.js";
+
 /**
  * Value Object: ProbabilityDistribution
  * Representa uma distribuição discreta de probabilidades tipada e normalizada (soma ~ 1.0)
@@ -14,7 +16,7 @@ export class ProbabilityDistribution<T extends string = string> {
   constructor(rawProbabilities: Record<T, number>, isOOD: boolean = false) {
     const keys = Object.keys(rawProbabilities) as T[];
     if (keys.length === 0) {
-      throw new Error("A distribuição de probabilidades não pode ser vazia.");
+      throw new EmptyDistributionException('A distribuição de probabilidades não pode ser vazia.');
     }
 
     let highestKey = keys[0];
@@ -32,14 +34,20 @@ export class ProbabilityDistribution<T extends string = string> {
       }
     }
 
+    if (sum <= 0) {
+      throw new EmptyDistributionException('Todos os valores da distribuição são zero ou negativos. Não é possível normalizar.');
+    }
+
     if (sum > 0 && Math.abs(sum - 1.0) > 1e-6) {
       for (const key of keys) {
         normalized[key] = Number((normalized[key] / sum).toFixed(4));
+        if (!Number.isFinite(normalized[key])) { normalized[key] = 0; }
       }
       maxProb = normalized[highestKey];
     } else {
       for (const key of keys) {
         normalized[key] = Number(normalized[key].toFixed(4));
+        if (!Number.isFinite(normalized[key])) { normalized[key] = 0; }
       }
       maxProb = normalized[highestKey];
     }

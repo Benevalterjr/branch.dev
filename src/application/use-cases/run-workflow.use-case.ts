@@ -8,6 +8,7 @@ import {
   InferAnswer,
 } from "../dtos/workflow-request.dto.js";
 import { ChoiceInput } from "../dtos/decide-request.dto.js";
+import { UnsupportedQuestionTypeException } from '../../domain/exceptions/domain-exceptions.js';
 
 /**
  * Caso de Uso: RunWorkflowUseCase
@@ -106,10 +107,20 @@ export class RunWorkflowUseCase {
         ] as const;
       }
 
-      throw new Error(`Tipo de pergunta não suportado: ${(q as { type: string }).type}`);
+      throw new UnsupportedQuestionTypeException((q as { type: string }).type);
     });
 
-    const evaluated = await Promise.all(promises);
+    const settled = await Promise.allSettled(promises);
+    const evaluated: (readonly [string, unknown])[] = [];
+    const errors: Array<{ key: string; error: unknown }> = [];
+
+    for (const result of settled) {
+      if (result.status === 'fulfilled') {
+        evaluated.push(result.value);
+      } else {
+        errors.push({ key: 'unknown', error: result.reason });
+      }
+    }
     const answers: Record<string, unknown> = {};
     for (const [key, res] of evaluated) {
       answers[key] = res;

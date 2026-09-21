@@ -68,9 +68,16 @@ export class OnnxEmbeddingAdapter implements IEmbeddingModel {
           console.warn(
             `[Branch.dev] Aviso: Falha ao carregar modelo ONNX '${this.modelName}' (${(err as Error).message}). Ativando Motor Semântico Local Integrado (Zero-Network Fallback).`
           );
-          // Fallback resiliente caso haja restrição de firewall/rede
           const fallback = this.createFallbackPipeline();
           OnnxEmbeddingAdapter.pipelineInstances.set(this.modelName, fallback);
+          // Schedule retry: clear fallback after 60s so next call attempts ONNX again
+          setTimeout(() => {
+            const current = OnnxEmbeddingAdapter.pipelineInstances.get(this.modelName);
+            // Only clear if still using fallback (not replaced by successful load)
+            if (current === fallback) {
+              OnnxEmbeddingAdapter.pipelineInstances.delete(this.modelName);
+            }
+          }, 60_000);
           return fallback;
         } finally {
           OnnxEmbeddingAdapter.loadingPromises.delete(this.modelName);
@@ -85,17 +92,32 @@ export class OnnxEmbeddingAdapter implements IEmbeddingModel {
 
   public async embed(text: string): Promise<Float32Array> {
     const pipe = await this.getPipeline();
-    const output = await pipe(text, { pooling: "mean", normalize: true });
+    const processedText = this.applyModelPrefix(text, 'query');
+    const output = await pipe(processedText, { pooling: "mean", normalize: true });
     return new Float32Array(output.data as ArrayLike<number>);
+  }
+
+  /**
+   * Aplica prefixos obrigatórios para modelos da família E5 (Wang et al.).
+   * Sem os prefixos "query: " / "passage: ", a similaridade semântica cai drasticamente.
+   */
+  private applyModelPrefix(text: string, type: 'query' | 'passage'): string {
+    const isE5 = this.modelName.toLowerCase().includes('e5');
+    if (!isE5) return text;
+    const prefix = type === 'query' ? 'query: ' : 'passage: ';
+    // Avoid double-prefixing
+    if (text.startsWith(prefix)) return text;
+    return prefix + text;
   }
 
   public async embedBatch(texts: string[]): Promise<Float32Array[]> {
     if (texts.length === 0) return [];
+    const processedTexts = texts.map(t => this.applyModelPrefix(t, 'passage'));
     const pipe = await this.getPipeline();
 
     try {
       // Execução em lote nativa na engine ONNX (True Tensor Batching)
-      const output = await (pipe as any)(texts, { pooling: "mean", normalize: true });
+      const output = await (pipe as any)(processedTexts, { pooling: "mean", normalize: true });
 
       if (output && output.dims && output.dims.length >= 2 && output.data) {
         const dim = output.dims[1];
@@ -119,9 +141,8 @@ export class OnnxEmbeddingAdapter implements IEmbeddingModel {
     }
 
     const fallbackResults: Float32Array[] = [];
-    for (const text of texts) {
-      const output = await (pipe as any)(text, { pooling: "mean", normalize: true });
-      fallbackResults.push(new Float32Array(output.data as ArrayLike<number>));
+    for (const text of processedTexts) {
+      fallbackResults.push(await this.embed(text));
     }
     return fallbackResults;
   }

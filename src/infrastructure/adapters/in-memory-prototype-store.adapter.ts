@@ -1,4 +1,4 @@
-﻿import { IPrototypeStore } from "../../domain/ports/prototype-store.port.js";
+import { IPrototypeStore } from "../../domain/ports/prototype-store.port.js";
 
 export interface PrototypeStoreConfig {
   /** Número máximo de vetores de exemplo retidos por escolha (padrão: 50) */
@@ -45,7 +45,7 @@ export class InMemoryPrototypeStore implements IPrototypeStore {
   public async getPrototype(choice: string): Promise<Float32Array | null> {
     const cached = this.cachedPrototypes.get(choice);
     if (cached) {
-      return cached;
+      return new Float32Array(cached);
     }
 
     const list = this.examples.get(choice);

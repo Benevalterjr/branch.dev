@@ -35,7 +35,7 @@ export class StateContext {
    * Converte objetos aninhados, arrays e tipos primitivos em um formato
    * semântico denso e estruturado, ideal para encoders neurais.
    */
-  private canonicalize(val: unknown, prefix = ""): string {
+  private canonicalize(val: unknown, prefix = "", seen: WeakSet<object> = new WeakSet()): string {
     if (typeof val === "string") {
       return val.trim();
     }
@@ -44,14 +44,21 @@ export class StateContext {
       return String(val);
     }
 
+    if (typeof val === "object" && val !== null) {
+      if (seen.has(val)) {
+        return '[Circular Reference]';
+      }
+      seen.add(val);
+    }
+
     if (Array.isArray(val)) {
-      return val.map((item, idx) => `${prefix}[${idx}]: ${this.canonicalize(item)}`).join("\n");
+      return val.map((item, idx) => `${prefix}[${idx}]: ${this.canonicalize(item, "", seen)}`).join("\n");
     }
 
     if (typeof val === "object" && val !== null) {
       const entries = Object.entries(val);
       if (entries.length === 0) {
-        throw new InvalidStateContextException("Objeto de estado não contém propriedades.");
+        return '[empty]';
       }
 
       return entries
@@ -63,9 +70,9 @@ export class StateContext {
             .trim();
 
           if (typeof v === "object" && v !== null && !Array.isArray(v)) {
-            return `${keyLabel}:\n${this.canonicalize(v, "  ")}`;
+            return `${keyLabel}:\n${this.canonicalize(v, "  ", seen)}`;
           }
-          return `${prefix}${keyLabel}: ${this.canonicalize(v)}`;
+          return `${prefix}${keyLabel}: ${this.canonicalize(v, "", seen)}`;
         })
         .join("\n");
     }

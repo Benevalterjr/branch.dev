@@ -1,4 +1,5 @@
 import { ProbabilityDistribution } from "./probability.vo.js";
+import { LowConfidenceException } from "../exceptions/domain-exceptions.js";
 
 /**
  * Entidade: ScoreDecision (Equivalente à primitiva 'Score' da TypeSafe)
@@ -9,21 +10,24 @@ export class ScoreDecision {
   public readonly score: number;
   public readonly scale: readonly number[];
   public readonly distribution: ProbabilityDistribution<string>;
+  public readonly isOOD: boolean;
   public readonly latencyMs: number;
-  public readonly timestamp: Date;
+  public readonly timestampMs: number;
 
   constructor(
     score: number,
     scale: readonly number[],
     distribution: ProbabilityDistribution<string>,
     latencyMs: number,
-    timestamp: Date = new Date()
+    timestampMs: number = Date.now()
   ) {
+    if (!Number.isFinite(score)) { score = 0; }
     this.score = Number(score.toFixed(2));
     this.scale = scale;
     this.distribution = distribution;
+    this.isOOD = distribution.isOOD;
     this.latencyMs = latencyMs;
-    this.timestamp = timestamp;
+    this.timestampMs = timestampMs;
   }
 
   public get probabilities(): Record<string, number> {
@@ -32,5 +36,20 @@ export class ScoreDecision {
 
   public get confidence(): number {
     return this.distribution.confidence;
+  }
+
+  public isConfident(threshold: number = 0.70): boolean {
+    if (this.isOOD) return false;
+    return this.confidence >= threshold;
+  }
+
+  public assertConfidence(threshold: number): void {
+    if (!this.isConfident(threshold)) {
+      throw new LowConfidenceException(
+        this.isOOD ? `[OOD] score=${this.score}` : `score=${this.score}`,
+        this.confidence,
+        threshold
+      );
+    }
   }
 }

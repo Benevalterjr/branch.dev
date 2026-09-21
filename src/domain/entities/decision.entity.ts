@@ -13,12 +13,12 @@ export class Decision<T extends string = string> {
   public readonly entropy: number;
   public readonly normalizedEntropy: number;
   public readonly latencyMs: number;
-  public readonly timestamp: Date;
+  public readonly timestampMs: number;
 
   constructor(
     distribution: ProbabilityDistribution<T>,
     latencyMs: number,
-    timestamp: Date = new Date()
+    timestampMs: number = Date.now()
   ) {
     this.distribution = distribution;
     this.winner = distribution.winner;
@@ -27,7 +27,7 @@ export class Decision<T extends string = string> {
     this.entropy = distribution.entropy;
     this.normalizedEntropy = distribution.normalizedEntropy;
     this.latencyMs = latencyMs;
-    this.timestamp = timestamp;
+    this.timestampMs = timestampMs;
   }
 
   /**

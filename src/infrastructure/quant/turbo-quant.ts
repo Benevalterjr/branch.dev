@@ -1,11 +1,12 @@
 /**
- * TurboQuant: Motor Matemático de Produto Interno e Quantização Online
- * Baseado no paper: arXiv:2504.19874 (TurboQuant: Online Vector Quantization with Near-optimal Distortion Rate)
+ * TurboQuant: Motor Matemático de Similaridade Vetorial e Quantização Online
  *
  * Características:
- * 1. Rotação Ortogonal com distribuição esférica uniforme para induzir distribuição Beta nas coordenadas.
- * 2. Quantização escalar online sem necessidade de treinamento (zero-indexing time).
- * 3. Estimador não-viesado de similaridade/produto interno (MIPS).
+ * 1. Similaridade de cosseno e produto interno otimizados para CPU.
+ * 2. Quantização escalar online de 3 bits com sinal para compressão vetorial.
+ * 3. Estimador não-viesado de produto interno (MIPS) via desquantização assimétrica.
+ *
+ * Nota: quantizeVector e fastInnerProduct são experimentais e não utilizados no pipeline principal.
  */
 
 export class TurboQuant {
@@ -16,7 +17,12 @@ export class TurboQuant {
     let dot = 0;
     let normA = 0;
     let normB = 0;
-    const len = Math.min(a.length, b.length);
+    if (a.length !== b.length) {
+      throw new Error(
+        `[TurboQuant] Dimensões de vetores incompatíveis: ${a.length} vs ${b.length}`
+      );
+    }
+    const len = a.length;
 
     for (let i = 0; i < len; i++) {
       dot += a[i] * b[i];
@@ -29,6 +35,25 @@ export class TurboQuant {
   }
 
   /**
+   * Produto interno direto para vetores pré-normalizados em L2.
+   * Para vetores unitários: cos(a, b) = a · b (sem necessidade de divisão por normas).
+   * ~3x mais rápido que cosineSimilarity quando os vetores já estão normalizados.
+   */
+  public static dotProduct(a: Float32Array, b: Float32Array): number {
+    if (a.length !== b.length) {
+      throw new Error(
+        `[TurboQuant] Dimensões de vetores incompatíveis: ${a.length} vs ${b.length}`
+      );
+    }
+    let dot = 0;
+    for (let i = 0; i < a.length; i++) {
+      dot += a[i] * b[i];
+    }
+    return dot;
+  }
+
+  /**
+   * @experimental
    * Quantiza um vetor FP32 para um formato ultra-compacto de 3 bits com residual de 1 bit (QJL),
    * garantindo distorção quase nula e velocidade máxima em CPU.
    */
@@ -64,6 +89,7 @@ export class TurboQuant {
   }
 
   /**
+   * @experimental
    * Produto interno rápido estimador (desquantização direta durante multiplicação)
    */
   public static fastInnerProduct(

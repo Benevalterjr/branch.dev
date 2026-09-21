@@ -26,25 +26,17 @@ export interface ScoreRequestDto {
 
 /**
  * DTO de Saída para a Primitiva Score
+ * Dados puros serializáveis.
  */
 export interface ScoreResponseDto {
-  /**
-   * Pontuação contínua calculada via Valor Esperado E[X] (ex: 1.4)
-   */
+  /** Pontuação contínua calculada via Valor Esperado E[X] (ex: 1.4) */
   score: number;
-
-  /**
-   * Distribuição de probabilidades em cada ponto da escala
-   */
+  /** Distribuição de probabilidades em cada ponto da escala */
   probabilities: Record<number, number>;
-
-  /**
-   * Grau de confiança na categoria de maior probabilidade
-   */
+  /** Grau de confiança na categoria de maior probabilidade */
   confidence: number;
-
-  /**
-   * Latência da inferência em milissegundos
-   */
+  /** Indica se a entrada é Out-of-Distribution */
+  isOOD: boolean;
+  /** Latência da inferência em milissegundos */
   latencyMs: number;
 }

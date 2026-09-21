@@ -14,7 +14,14 @@ import {
 } from "../application/dtos/workflow-request.dto.js";
 
 // Instância singleton padrão para conveniência e DevEx imediata
-let defaultClient = new BranchClient();
+let defaultClient: BranchClient | null = null;
+
+function ensureClient(): BranchClient {
+  if (!defaultClient) {
+    defaultClient = new BranchClient();
+  }
+  return defaultClient;
+}
 
 /**
  * Reconfigura o cliente padrão global (ex: alterar modelo de embedding para multilíngue ou calibrador).
@@ -28,7 +35,7 @@ export function configure(config: BranchClientConfig): BranchClient {
  * Retorna a instância padrão atual do BranchClient.
  */
 export function getDefaultClient(): BranchClient {
-  return defaultClient;
+  return ensureClient();
 }
 
 /**
@@ -37,7 +44,7 @@ export function getDefaultClient(): BranchClient {
 export async function decide<T extends string = string>(
   request: DecideRequestDto<T>
 ): Promise<DecideResponseDto<T>> {
-  return defaultClient.decide<T>(request);
+  return ensureClient().decide<T>(request);
 }
 
 /**
@@ -46,7 +53,7 @@ export async function decide<T extends string = string>(
 export async function boolean(
   request: BooleanRequestDto
 ): Promise<BooleanResponseDto> {
-  return defaultClient.boolean(request);
+  return ensureClient().boolean(request);
 }
 
 /**
@@ -55,7 +62,7 @@ export async function boolean(
 export async function score(
   request: ScoreRequestDto
 ): Promise<ScoreResponseDto> {
-  return defaultClient.score(request);
+  return ensureClient().score(request);
 }
 
 /**
@@ -66,7 +73,7 @@ export async function workflow<
 >(
   request: WorkflowRequestDto<TQuestions>
 ): Promise<WorkflowResponseDto<TQuestions>> {
-  return defaultClient.workflow<TQuestions>(request);
+  return ensureClient().workflow<TQuestions>(request);
 }
 
 export { BranchClient, BranchClientConfig } from "./branch-client.js";
@@ -89,4 +96,3 @@ export * from "../infrastructure/adapters/adaptive-platt-calibrator.adapter.js";
 export * from "../infrastructure/adapters/in-memory-prototype-store.adapter.js";
 export * from "../infrastructure/adapters/in-memory-feedback-store.adapter.js";
 export * from "../infrastructure/quant/turbo-quant.js";
-

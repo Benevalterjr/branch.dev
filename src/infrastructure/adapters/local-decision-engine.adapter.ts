@@ -86,25 +86,23 @@ export class LocalDecisionEngine implements IDecisionEngine {
     // 3. Extrai embedding do estado no contexto da tarefa (passada única otimizada)
     const stateVector = await this.embeddingModel.embed(contextPrompt);
 
-    // 4. Calcula similaridades de cosseno (logits brutos) e similaridade para OOD
+    // 4. Calcula similaridades de cosseno (logits brutos)
     const rawLogits: number[] = new Array(params.candidates.length);
-    let maxPureSim = -Infinity;
 
     for (let i = 0; i < params.candidates.length; i++) {
-      const similarity = TurboQuant.cosineSimilarity(stateVector, choiceVectors[i]);
+      const similarity = TurboQuant.dotProduct(stateVector, choiceVectors[i]);
       rawLogits[i] = similarity;
-      if (similarity > maxPureSim) maxPureSim = similarity;
     }
 
-    // 5. Se a similaridade semântica direta for inferior a 0.15, ativa salvaguarda OOD
-    const isDirectOOD = maxPureSim < 0.15;
+    // 5. Detecção de Out-of-Distribution via limiar configurável
+    const oodThreshold = params.oodThreshold ?? 0.15;
 
     const distribution = this.calibrator.calibrate<T>(
       choiceIds,
       rawLogits,
       {
         temperature: params.temperature,
-        oodThreshold: isDirectOOD ? 999 : 0.0,
+        oodThreshold,
       }
     );
 

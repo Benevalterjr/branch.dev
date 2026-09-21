@@ -17,6 +17,7 @@ export interface EngineExecutionParams<T extends string = string> {
   candidates: readonly ChoiceCandidate<T>[];
   taskDescription?: string;
   temperature?: number;
+  oodThreshold?: number;
 }
 
 /**

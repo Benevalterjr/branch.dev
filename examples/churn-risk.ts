@@ -59,7 +59,7 @@ async function main() {
   }
 
   // 6. Teste de segurança de calibração
-  console.log(`\n🛡️ Verificação de Segurança (isConfident >= 70%): ${result.isConfident(0.70)}`);
+  console.log(`\n🛡️ Verificação de Segurança (confidence >= 70%): ${result.confidence >= 0.70 && !result.isOOD}`);
 }
 
 main().catch(console.error);

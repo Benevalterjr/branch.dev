@@ -2,6 +2,7 @@ import { IDecisionEngine } from "../../domain/ports/decision-engine.port.js";
 import { StateContext } from "../../domain/entities/state-context.vo.js";
 import { ScoreDecision } from "../../domain/entities/score-decision.entity.js";
 import { ScoreRequestDto, ScoreResponseDto } from "../dtos/score-request.dto.js";
+import { InvalidScaleException } from '../../domain/exceptions/domain-exceptions.js';
 
 /**
  * Caso de Uso: EvaluateScoreUseCase (Primitiva Score)
@@ -20,7 +21,7 @@ export class EvaluateScoreUseCase {
     }));
 
     if (scaleEntries.length < 2) {
-      throw new Error("A escala para primitiva Score deve ter pelo menos 2 pontos.");
+      throw new InvalidScaleException();
     }
 
     const candidates = scaleEntries.map((e) => ({
@@ -56,6 +57,7 @@ export class EvaluateScoreUseCase {
       score: scoreDecision.score,
       probabilities: numericProbs,
       confidence: scoreDecision.confidence,
+      isOOD: decision.isOOD,
       latencyMs: scoreDecision.latencyMs,
     };
   }

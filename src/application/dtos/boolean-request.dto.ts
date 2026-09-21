@@ -35,40 +35,17 @@ export interface BooleanRequestDto {
 
 /**
  * DTO de Saída para a Primitiva Boolean (Noul)
+ * Dados puros serializáveis (sem métodos/closures).
  */
 export interface BooleanResponseDto {
-  /**
-   * Resultado booleano principal (true se probabilidade >= 0.5)
-   */
+  /** Resultado booleano principal (true se probabilidade >= 0.5) */
   value: boolean;
-
-  /**
-   * Probabilidade calibrada de ser verdadeiro (0.00 a 1.00)
-   */
+  /** Probabilidade calibrada de ser verdadeiro (0.00 a 1.00) */
   probability: number;
-
-  /**
-   * Nível de certeza geral da decisão (max(P(true), P(false)))
-   */
+  /** Nível de certeza geral da decisão (max(P(true), P(false))) */
   confidence: number;
-
-  /**
-   * Indica se a entrada é Out-of-Distribution (fora do domínio esperado)
-   */
+  /** Indica se a entrada é Out-of-Distribution (fora do domínio esperado) */
   isOOD: boolean;
-
-  /**
-   * Latência da inferência em milissegundos
-   */
+  /** Latência da inferência em milissegundos */
   latencyMs: number;
-
-  /**
-   * Verifica se a confiança atinge o limiar
-   */
-  isConfident(threshold?: number): boolean;
-
-  /**
-   * Assegura a confiança mínima ou lança LowConfidenceException
-   */
-  assertConfidence(threshold: number): void;
 }

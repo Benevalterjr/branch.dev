@@ -11,14 +11,15 @@ export class BooleanDecision {
   public readonly confidence: number;  // Grau de certeza: max(P(true), P(false))
   public readonly isOOD: boolean;
   public readonly latencyMs: number;
-  public readonly timestamp: Date;
+  public readonly timestampMs: number;
 
   constructor(
     trueProbability: number,
     latencyMs: number,
     isOOD: boolean = false,
-    timestamp: Date = new Date()
+    timestampMs: number = Date.now()
   ) {
+    if (!Number.isFinite(trueProbability)) { trueProbability = 0.5; }
     this.isOOD = isOOD;
     this.probability = Math.min(1.0, Math.max(0.0, Number(trueProbability.toFixed(4))));
     this.value = this.probability >= 0.5;
@@ -27,7 +28,7 @@ export class BooleanDecision {
       ? 0.0
       : Math.max(this.probability, Number((1 - this.probability).toFixed(4)));
     this.latencyMs = latencyMs;
-    this.timestamp = timestamp;
+    this.timestampMs = timestampMs;
   }
 
   public isConfident(threshold: number = 0.70): boolean {

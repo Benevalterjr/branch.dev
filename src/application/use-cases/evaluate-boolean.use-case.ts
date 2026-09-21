@@ -18,13 +18,13 @@ export class EvaluateBooleanUseCase {
         id: "true",
         description:
           request.affirmativeDescription ??
-          `${request.question} - Yes / True (evident, confirmed, urgent, affirmative)`,
+          `${request.question} - Sim / Yes / True (evidente, confirmado, urgente, afirmativo)`,
       },
       {
         id: "false",
         description:
           request.negativeDescription ??
-          `${request.question} - No / False (not evident, denied, calm, negative)`,
+          `${request.question} - Não / No / False (não evidente, negado, calmo, negativo)`,
       },
     ];
 
@@ -52,8 +52,6 @@ export class EvaluateBooleanUseCase {
       confidence: booleanDecision.confidence,
       isOOD: booleanDecision.isOOD,
       latencyMs: booleanDecision.latencyMs,
-      isConfident: (threshold = 0.7) => booleanDecision.isConfident(threshold),
-      assertConfidence: (threshold: number) => booleanDecision.assertConfidence(threshold),
     };
   }
 }

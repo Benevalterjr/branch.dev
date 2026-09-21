@@ -30,6 +30,12 @@ export class PlattTemperatureCalibrator implements ICalibrator {
     }
     const isOOD = maxRawLogit < oodThreshold;
 
+    // Nota arquitetural: Dividir pelo desvio padrão sigma por consulta (Z-Score intra-query)
+    // amplifica o contraste entre logits próximos. Isso é intencional para maximizar
+    // a discriminação, mas pode gerar falsa confiança quando os logits são quase
+    // idênticos (sigma ≈ 0). O guard `std < 1e-6` abaixo mitiga esse risco
+    // retornando distribuição uniforme quando a dispersão é insuficiente.
+    // Trade-off: Z-Score intra-query vs Temperature Scaling puro (Guo et al., 2017).
     // 2. Média e Desvio Padrão (Z-score dos logits)
     const mean = rawLogits.reduce((acc, val) => acc + val, 0) / n;
     const variance = rawLogits.reduce((acc, val) => acc + (val - mean) ** 2, 0) / n;

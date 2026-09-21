@@ -27,6 +27,7 @@ import { IAdaptiveCalibrator } from "../domain/ports/adaptive-calibrator.port.js
 import { IPrototypeStore } from "../domain/ports/prototype-store.port.js";
 import { IFeedbackStore } from "../domain/ports/feedback-store.port.js";
 import { StateContext } from "../domain/entities/state-context.vo.js";
+import { ConfigurationException } from '../domain/exceptions/domain-exceptions.js';
 
 export interface BranchClientConfig {
   /**
@@ -138,13 +139,17 @@ export class BranchClient {
    */
   public async addExample(choice: string, state: unknown): Promise<void> {
     if (!this.prototypeStore) {
-      throw new Error(
+      throw new ConfigurationException(
         "[Branch.dev] PrototypeStore não configurado no BranchClient. Inicialize com 'prototypeStore' (ex: new InMemoryPrototypeStore())."
       );
     }
     const stateContext = state instanceof StateContext ? state : StateContext.from(state);
     const emb = await this.embeddingModel.embed(stateContext.canonicalText);
     await this.prototypeStore.addExample(choice, emb);
+  }
+
+  private isAdaptiveCalibrator(calibrator: ICalibrator): calibrator is IAdaptiveCalibrator {
+    return 'recordFeedback' in calibrator && typeof (calibrator as IAdaptiveCalibrator).recordFeedback === 'function';
   }
 
   /**
@@ -166,11 +171,8 @@ export class BranchClient {
     const confidence = params.confidence ?? 0.5;
 
     // 1. Atualização do calibrador adaptativo
-    if (
-      "recordFeedback" in this.calibrator &&
-      typeof (this.calibrator as any).recordFeedback === "function"
-    ) {
-      (this.calibrator as IAdaptiveCalibrator).recordFeedback({
+    if (this.isAdaptiveCalibrator(this.calibrator)) {
+      this.calibrator.recordFeedback({
         wasCorrect: params.wasCorrect,
         confidence,
         logits: params.logits,
@@ -180,11 +182,11 @@ export class BranchClient {
 
     // 2. Persistência de feedback para auditoria
     if (this.feedbackStore) {
-      let stateHash: string | undefined;
+      let statePreview: string | undefined;
       if (params.state) {
         const stateContext =
           params.state instanceof StateContext ? params.state : StateContext.from(params.state);
-        stateHash = stateContext.canonicalText.substring(0, 100);
+        statePreview = stateContext.canonicalText.substring(0, 100);
       }
 
       await this.feedbackStore.record({
@@ -193,7 +195,7 @@ export class BranchClient {
         wasCorrect: params.wasCorrect,
         confidenceAtDecision: confidence,
         timestamp: Date.now(),
-        stateHash,
+        stateHash: statePreview,
         metadata: params.metadata,
       });
     }
@@ -209,6 +211,11 @@ export class BranchClient {
     return this.calibrator;
   }
 
+  /** Retorna o calibrador adaptativo, ou undefined se o calibrador não for adaptativo */
+  public getAdaptiveCalibrator(): IAdaptiveCalibrator | undefined {
+    return this.isAdaptiveCalibrator(this.calibrator) ? this.calibrator : undefined;
+  }
+
   /** Retorna a instância do PrototypeStore (ou undefined se não configurado) */
   public getPrototypeStore(): IPrototypeStore | undefined {
     return this.prototypeStore;
@@ -222,5 +229,20 @@ export class BranchClient {
   /** Retorna a instância do modelo de embeddings configurado */
   public getEmbeddingModel(): IEmbeddingModel {
     return this.embeddingModel;
+  }
+
+  /**
+   * Pré-carrega o modelo de embeddings em memória para evitar latência no primeiro request.
+   */
+  public async warmup(): Promise<void> {
+    await this.embeddingModel.embed('warmup');
+  }
+
+  /**
+   * Libera recursos mantidos pelo cliente (prototype store, feedback store).
+   */
+  public async dispose(): Promise<void> {
+    if (this.prototypeStore) await this.prototypeStore.clear();
+    if (this.feedbackStore) await this.feedbackStore.clear();
   }
 }

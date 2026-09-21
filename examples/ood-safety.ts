@@ -80,15 +80,16 @@ async function main() {
     console.log(`👉 [AÇÃO AUTOMÁTICA]: Encaminhado para a fila de ${oodDept.choice}.`);
   }
 
-  // Demonstração direta do decide() com assertConfidence
+  // Demonstração direta do decide() com verificação de confiança
   console.log("\n3️⃣ [TESTE DE ASSERT CONFIDENCE EM ENTRADA OOD]:");
   try {
     const singleDecision = await decide({
       state: absurdState,
       choices: Departments,
       task: "departamento responsável",
+      minConfidence: 0.70,
     });
-    singleDecision.assertConfidence(0.70);
+    console.log(`Decisão: ${singleDecision.winner}`);
   } catch (err) {
     console.log(`🛡️ Bloqueio com Sucesso via Exceção de Domínio: ${(err as Error).message}`);
   }

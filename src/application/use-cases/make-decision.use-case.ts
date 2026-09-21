@@ -46,8 +46,6 @@ export class MakeDecisionUseCase {
       normalizedEntropy: decision.normalizedEntropy,
       probabilities: decision.probabilities,
       latencyMs: decision.latencyMs,
-      isConfident: (threshold = 0.7) => decision.isConfident(threshold),
-      assertConfidence: (threshold: number) => decision.assertConfidence(threshold),
     };
   }
 
@@ -60,12 +58,12 @@ export class MakeDecisionUseCase {
 
     if (Array.isArray(choices)) {
       for (const item of choices) {
-        if (typeof item === "string") {
+        if (typeof item === 'string') {
           if (!seen.has(item)) {
             seen.add(item);
             candidates.push({ id: item as T, description: item });
           }
-        } else if (typeof item === "object" && item !== null && "id" in item) {
+        } else if (typeof item === 'object' && item !== null && 'id' in item) {
           const opt = item as ChoiceOption<T>;
           if (!seen.has(opt.id)) {
             seen.add(opt.id);
@@ -76,16 +74,37 @@ export class MakeDecisionUseCase {
       return candidates;
     }
 
-    if (typeof choices === "object" && choices !== null) {
-      for (const [key, val] of Object.entries(choices)) {
-        // Se a chave for toda maiúscula (ex: LOW = "baixo"), trata como TypeScript Enum
-        if (key === key.toUpperCase() && typeof val === "string") {
-          if (!seen.has(val)) {
-            seen.add(val);
-            candidates.push({ id: val as T, description: val });
+    if (typeof choices === 'object' && choices !== null) {
+      const entries = Object.entries(choices);
+
+      // Detecta TypeScript Enum compilado: enums numéricos geram mapeamento bidirecional
+      // ex: enum E { A = "x" } compila para { A: "x" }, enum E { A = 0 } compila para { "0": "A", A: 0 }
+      // String enums: as chaves são os nomes e os valores são strings.
+      // Heurística segura: é um string enum se TODOS os valores são strings E
+      // existem chaves numéricas reversas (mapeamento bidirecional de enum numérico).
+      const hasNumericReverseMapping = entries.some(
+        ([key, val]) => !isNaN(Number(key)) && typeof val === 'string'
+      );
+
+      if (hasNumericReverseMapping) {
+        // Enum numérico do TypeScript: ignorar as chaves numéricas reversas
+        for (const [key, val] of entries) {
+          if (typeof val === 'string' && !isNaN(Number(key))) {
+            // Chave numérica reversa, pular
+            continue;
           }
-        } else {
-          // Caso contrário, trata chave como id e valor como descrição semântica
+          if (typeof val === 'number') {
+            // Chave nominal -> valor numérico: usar a chave como id
+            const id = key as T;
+            if (!seen.has(id)) {
+              seen.add(id);
+              candidates.push({ id, description: id });
+            }
+          }
+        }
+      } else {
+        // Objeto literal ou string enum: chave = id, valor = descrição
+        for (const [key, val] of entries) {
           const id = key as T;
           if (!seen.has(id)) {
             seen.add(id);

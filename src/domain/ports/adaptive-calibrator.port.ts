@@ -70,10 +70,10 @@ export interface IAdaptiveCalibrator extends ICalibrator {
   /**
    * Retorna as métricas estatísticas e de calibração atuais.
    */
-  getMetrics?(): CalibrationMetrics;
+  getMetrics(): CalibrationMetrics;
 
   /**
    * Reseta o estado do otimizador para os parâmetros iniciais.
    */
-  reset?(): void;
+  reset(): void;
 }
