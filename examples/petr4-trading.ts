@@ -35,8 +35,24 @@ const prototypeStore = new InMemoryPrototypeStore();
 // Calibrador com temperatura adequada para distribuições financeiras (evita overconfidence artificial)
 const calibrator = new PlattTemperatureCalibrator(0.85);
 
-// Modelo Multilíngue de 12 camadas oficial (especializado em Português do Brasil e mercado local)
-const selectedModel = BRANCH_EMBEDDING_MODELS.MULTILINGUAL_BALANCED;
+const useMmBert = process.argv.includes("--mmbert") || process.argv.some((a) => a.toLowerCase().includes("mmbert"));
+const useL12 = process.argv.includes("--l12") || process.argv.some((a) => a.toLowerCase().includes("l12"));
+const useL6 = process.argv.includes("--l6") || process.argv.some((a) => a.toLowerCase().includes("l6"));
+
+import { existsSync } from "node:fs";
+
+const localMmBertPath = "./models/mmbert-small-feature";
+const hasLocalMmBert = existsSync(localMmBertPath);
+
+// Seleção de modelo dinâmica com padrão Multilíngue balanceado (paraphrase-multilingual-MiniLM-L12-v2)
+const selectedModel = useMmBert
+  ? (hasLocalMmBert ? localMmBertPath : BRANCH_EMBEDDING_MODELS.MMBERT_SMALL)
+  : useL12
+  ? BRANCH_EMBEDDING_MODELS.ACCURATE_EN
+  : useL6
+  ? BRANCH_EMBEDDING_MODELS.FAST_EN
+  : BRANCH_EMBEDDING_MODELS.MULTILINGUAL_BALANCED;
+
 
 const branch = new BranchClient({
   modelName: selectedModel,

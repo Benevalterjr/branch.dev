@@ -18,7 +18,8 @@
     "benchmark": "tsx examples/benchmark.ts",
     "trading:petr4": "tsx examples/petr4-trading.ts",
     "benchmark:llm": "tsx examples/benchmark-llm-comparison.ts",
-    "benchmark:asteroid": "tsx examples/asteroid-benchmark.ts"
+    "benchmark:asteroid": "tsx examples/asteroid-benchmark.ts",
+    "benchmark:mmbert": "tsx examples/benchmark-mmbert-vs-qwen.ts"
   },
   "keywords": [
     "ai",

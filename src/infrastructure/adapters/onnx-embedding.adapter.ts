@@ -12,6 +12,10 @@ export const BRANCH_EMBEDDING_MODELS = {
   ACCURATE_EN: "Xenova/all-MiniLM-L12-v2",
   /** Recomendado para Português: Multilíngue balanceado (PT-BR, ES, 50+ idiomas, 12 camadas, 384 dim, ~118MB quantizado) */
   MULTILINGUAL_BALANCED: "Xenova/paraphrase-multilingual-MiniLM-L12-v2",
+  /** ModernBERT Multilíngue (JHU-CLSP): Contexto de 8192 tokens, vocabulário Gemma 2 (256k), 1833 idiomas, 384 dim, ~142MB quantizado */
+  MMBERT_SMALL: "onnx-community/mmBERT-small-ONNX",
+  /** ModernBERT Headless Feature Extraction Local (384 dim, ~66ms warm CPU) */
+  MMBERT_LOCAL: "./models/mmbert-small-feature",
   /** Alta qualidade semântica multilíngue (100+ idiomas, 384 dim, ~120MB quantizado) */
   MULTILINGUAL_E5_SMALL: "Xenova/multilingual-e5-small",
   /** Qualidade superior multilíngue (100+ idiomas, 768 dim, ~280-350MB quantizado) */
@@ -91,6 +95,17 @@ export class OnnxEmbeddingAdapter implements IEmbeddingModel {
     const isLocalDir = path.isAbsolute(modelName) || modelName.startsWith("./") || modelName.startsWith("../");
     if (isLocalDir) {
       return path.resolve(modelName);
+    }
+
+    // Se o modelo solicitado for mmBERT e o diretório otimizado headless existir localmente, priorizá-lo
+    if (
+      modelName === BRANCH_EMBEDDING_MODELS.MMBERT_SMALL ||
+      modelName === (BRANCH_EMBEDDING_MODELS as any).MMBERT_LOCAL
+    ) {
+      const localCustom = path.resolve("./models/mmbert-small-feature");
+      if (await this.checkFileExists(path.join(localCustom, "model.onnx"))) {
+        return localCustom;
+      }
     }
 
     const cacheBase =
