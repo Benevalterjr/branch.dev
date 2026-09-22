@@ -42,16 +42,44 @@ export class EvaluateBooleanUseCase {
       decision.isOOD
     );
 
-    if (request.minConfidence !== undefined) {
-      booleanDecision.assertConfidence(request.minConfidence);
-    }
+    const effectiveThreshold = request.confidenceThreshold ?? request.minConfidence;
+    const isBelowConfidence = effectiveThreshold !== undefined && booleanDecision.confidence < effectiveThreshold;
+    const isUncertain = booleanDecision.isOOD || isBelowConfidence;
 
-    return {
+    const baseResponse: BooleanResponseDto = {
       value: booleanDecision.value,
       probability: booleanDecision.probability,
       confidence: booleanDecision.confidence,
       isOOD: booleanDecision.isOOD,
       latencyMs: booleanDecision.latencyMs,
+      system: "system1",
+      actProbability: booleanDecision.isOOD ? 0.0 : booleanDecision.confidence,
+      delegatedToFallback: false,
     };
+
+    if (request.fallback && isUncertain) {
+      const fallbackResult = await request.fallback(baseResponse);
+      if (typeof fallbackResult === "boolean") {
+        return {
+          ...baseResponse,
+          value: fallbackResult,
+          system: "system2",
+          delegatedToFallback: true,
+        };
+      }
+      return {
+        ...baseResponse,
+        ...fallbackResult,
+        system: "system2",
+        delegatedToFallback: true,
+      };
+    }
+
+    if (request.minConfidence !== undefined) {
+      booleanDecision.assertConfidence(request.minConfidence);
+    }
+
+    return baseResponse;
   }
 }
+

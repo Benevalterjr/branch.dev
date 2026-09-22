@@ -14,5 +14,5 @@ export * from './domain/ports/decision-engine.port.js';
 
 // Infrastructure Adapters (for advanced usage)
 export { OnnxEmbeddingAdapter, BRANCH_EMBEDDING_MODELS, type SupportedEmbeddingModel } from './infrastructure/adapters/onnx-embedding.adapter.js';
-export { PlattTemperatureCalibrator } from './infrastructure/adapters/platt-calibrator.adapter.js';
+export { PlattTemperatureCalibrator, getCardinalityBucket, DEFAULT_CARDINALITY_TEMPERATURES } from './infrastructure/adapters/platt-calibrator.adapter.js';
 export { LocalDecisionEngine } from './infrastructure/adapters/local-decision-engine.adapter.js';

@@ -22,6 +22,28 @@ export interface ScoreRequestDto {
    * Temperatura para calibração estatística
    */
   temperature?: number;
+
+  /**
+   * Confiança mínima requerida (0.0 a 1.0)
+   */
+  minConfidence?: number;
+
+  /**
+   * Limiar de confiança para acionamento de fallback (0.0 a 1.0).
+   * Se a confiança for menor que esse valor ou o estado for OOD, o fallback é invocado.
+   */
+  confidenceThreshold?: number;
+
+  /**
+   * Função de fallback acionada automaticamente quando a pontuação for incerta ou Out-of-Distribution.
+   * Permite delegar graciosamente ao Sistema 2.
+   */
+  fallback?: (
+    decision: ScoreResponseDto
+  ) =>
+    | Promise<number | Partial<ScoreResponseDto>>
+    | number
+    | Partial<ScoreResponseDto>;
 }
 
 /**
@@ -39,4 +61,18 @@ export interface ScoreResponseDto {
   isOOD: boolean;
   /** Latência da inferência em milissegundos */
   latencyMs: number;
+  /**
+   * Indica se a resposta veio do Sistema 1 (rápido, determinístico) ou do Sistema 2 (fallback/LLM).
+   */
+  system?: "system1" | "system2";
+  /**
+   * Probabilidade estimada para o agente agir autonomamente (metacognição).
+   * Se for Out-of-Distribution (OOD), o valor é 0.0.
+   */
+  actProbability?: number;
+  /**
+   * Indica se a decisão foi resolvida por um fallback do Sistema 2.
+   */
+  delegatedToFallback?: boolean;
 }
+

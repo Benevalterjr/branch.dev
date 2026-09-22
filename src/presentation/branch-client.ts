@@ -97,7 +97,8 @@ export class BranchClient {
     this.runWorkflowUseCase = new RunWorkflowUseCase(
       this.makeDecisionUseCase,
       this.evaluateBooleanUseCase,
-      this.evaluateScoreUseCase
+      this.evaluateScoreUseCase,
+      engine
     );
   }
 
@@ -132,6 +133,40 @@ export class BranchClient {
   >(request: WorkflowRequestDto<TQuestions>): Promise<WorkflowResponseDto<TQuestions>> {
     return this.runWorkflowUseCase.execute<TQuestions>(request);
   }
+
+  /**
+   * Avalia todas as perguntas sobre o estado em uma única passada vetorial (Batch forward pass).
+   * Atalho de conveniência ergonômico para workflow.
+   */
+  public async evaluateAll<
+    TQuestions extends Record<string, WorkflowQuestion> = Record<string, WorkflowQuestion>
+  >(
+    state: unknown,
+    questions: TQuestions,
+    options?: { confidenceThreshold?: number; model?: string }
+  ): Promise<WorkflowResponseDto<TQuestions>> {
+    return this.workflow<TQuestions>({
+      state,
+      questions,
+      confidenceThreshold: options?.confidenceThreshold,
+      model: options?.model,
+    });
+  }
+
+  /**
+   * Executa a inferência não-autoregressiva do Sistema 1 (estilo Laya/ModernBERT).
+   * Avalia múltiplas perguntas tipadas sobre o mesmo estado em uma única passada de rede neural na CPU.
+   */
+  public async systemOne<
+    TQuestions extends Record<string, WorkflowQuestion> = Record<string, WorkflowQuestion>
+  >(
+    state: unknown,
+    questions: TQuestions,
+    options?: { confidenceThreshold?: number; model?: string }
+  ): Promise<WorkflowResponseDto<TQuestions>> {
+    return this.evaluateAll<TQuestions>(state, questions, options);
+  }
+
 
   /**
    * Registra um exemplo empírico confirmado para uma escolha no PrototypeStore.

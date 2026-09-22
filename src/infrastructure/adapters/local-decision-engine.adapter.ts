@@ -110,4 +110,123 @@ export class LocalDecisionEngine implements IDecisionEngine {
 
     return new Decision<T>(distribution, latencyMs);
   }
+
+  /**
+   * Avalia um lote de decisões em uma única passada de inferência vetorial (single forward pass),
+   * agrupando todas as opções e contextos de estado em um único tensor de entrada.
+   */
+  public async evaluateBatch<T extends string = string>(
+    batchParams: EngineExecutionParams<T>[]
+  ): Promise<Decision<T>[]> {
+    if (batchParams.length === 0) return [];
+    if (batchParams.length === 1) {
+      const single = await this.evaluate<T>(batchParams[0]);
+      return [single];
+    }
+
+    const startTime = performance.now();
+
+    // 1. Prepara descrições de contexto e de escolhas para todos os itens do lote
+    const preparedItems = batchParams.map((params) => {
+      const hasTask = Boolean(params.taskDescription && params.taskDescription.trim().length > 0);
+      const contextPrompt = hasTask
+        ? `Tarefa: ${params.taskDescription}\nContexto do Estado:\n${params.state.canonicalText}`
+        : params.state.canonicalText;
+
+      const choiceIds = params.candidates.map((c) => c.id);
+      const candidateTexts = params.candidates.map((c) => {
+        const label = c.id !== c.description ? `${c.id}: ${c.description}` : c.description;
+        return params.taskDescription ? `${params.taskDescription} -> ${label}` : label;
+      });
+
+      return {
+        params,
+        contextPrompt,
+        choiceIds,
+        candidateTexts,
+      };
+    });
+
+    // 2. Coleta todos os textos únicos necessários que ainda não estão em cache
+    const textToVectorMap = new Map<string, Float32Array>();
+    const missingTextsSet = new Set<string>();
+
+    for (const item of preparedItems) {
+      const cachedPrompt = this.choiceEmbeddingCache.get(item.contextPrompt);
+      if (cachedPrompt) {
+        textToVectorMap.set(item.contextPrompt, cachedPrompt);
+      } else {
+        missingTextsSet.add(item.contextPrompt);
+      }
+
+      for (const candText of item.candidateTexts) {
+        const cachedCand = this.choiceEmbeddingCache.get(candText);
+        if (cachedCand) {
+          textToVectorMap.set(candText, cachedCand);
+        } else {
+          missingTextsSet.add(candText);
+        }
+      }
+    }
+
+    // 3. Executa um único forward pass no ONNX para todos os textos pendentes do lote
+    if (missingTextsSet.size > 0) {
+      const missingTexts = Array.from(missingTextsSet);
+      const missingVectors = await this.embeddingModel.embedBatch(missingTexts);
+
+      for (let i = 0; i < missingTexts.length; i++) {
+        const text = missingTexts[i];
+        const vec = missingVectors[i];
+        textToVectorMap.set(text, vec);
+
+        if (this.choiceEmbeddingCache.size > 1000) {
+          const firstKey = this.choiceEmbeddingCache.keys().next().value;
+          if (firstKey) this.choiceEmbeddingCache.delete(firstKey);
+        }
+        this.choiceEmbeddingCache.set(text, vec);
+      }
+    }
+
+    // 4. Calcula similaridades e distribuições calibradas para cada item
+    const decisions: Decision<T>[] = [];
+    const sharedElapsed = Number((performance.now() - startTime).toFixed(2));
+    const perItemLatency = Number((sharedElapsed / batchParams.length).toFixed(2));
+
+    for (const item of preparedItems) {
+      const stateVector = textToVectorMap.get(item.contextPrompt)!;
+      const choiceVectors: Float32Array[] = item.candidateTexts.map(
+        (t) => textToVectorMap.get(t)!
+      );
+
+      // Aprimora com protótipos se configurado
+      if (this.prototypeStore) {
+        for (let i = 0; i < choiceVectors.length; i++) {
+          choiceVectors[i] = await this.prototypeStore.getEnhancedEmbedding(
+            item.choiceIds[i],
+            choiceVectors[i]
+          );
+        }
+      }
+
+      const rawLogits: number[] = new Array(item.params.candidates.length);
+      for (let i = 0; i < item.params.candidates.length; i++) {
+        rawLogits[i] = TurboQuant.dotProduct(stateVector, choiceVectors[i]);
+      }
+
+      const oodThreshold = item.params.oodThreshold ?? 0.15;
+      const distribution = this.calibrator.calibrate<T>(
+        item.choiceIds,
+        rawLogits,
+        {
+          temperature: item.params.temperature,
+          oodThreshold,
+        }
+      );
+
+      decisions.push(new Decision<T>(distribution, perItemLatency));
+    }
+
+    return decisions;
+  }
 }
+

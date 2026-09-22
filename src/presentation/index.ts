@@ -76,6 +76,34 @@ export async function workflow<
   return ensureClient().workflow<TQuestions>(request);
 }
 
+/**
+ * Avalia todas as perguntas sobre o estado em uma única passada vetorial pelo modelo (Batch forward pass).
+ */
+export async function evaluateAll<
+  TQuestions extends Record<string, WorkflowQuestion> = Record<string, WorkflowQuestion>
+>(
+  state: unknown,
+  questions: TQuestions,
+  options?: { confidenceThreshold?: number; model?: string }
+): Promise<WorkflowResponseDto<TQuestions>> {
+  return ensureClient().evaluateAll<TQuestions>(state, questions, options);
+}
+
+/**
+ * Executa a inferência não-autoregressiva do Sistema 1 (estilo Laya/ModernBERT).
+ * Avalia múltiplas perguntas tipadas sobre o mesmo estado em uma única passada de rede neural na CPU.
+ */
+export async function systemOne<
+  TQuestions extends Record<string, WorkflowQuestion> = Record<string, WorkflowQuestion>
+>(
+  state: unknown,
+  questions: TQuestions,
+  options?: { confidenceThreshold?: number; model?: string }
+): Promise<WorkflowResponseDto<TQuestions>> {
+  return ensureClient().systemOne<TQuestions>(state, questions, options);
+}
+
+
 export { BranchClient, BranchClientConfig } from "./branch-client.js";
 export { BRANCH_EMBEDDING_MODELS, SupportedEmbeddingModel };
 export * from "../application/dtos/decide-request.dto.js";

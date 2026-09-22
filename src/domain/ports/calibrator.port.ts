@@ -1,14 +1,25 @@
 import { ProbabilityDistribution } from "../entities/probability.vo.js";
 
 /**
+ * Buckets de cardinalidade baseados no número de escolhas disponíveis (K).
+ * Inspirado na calibração por cardinalidade do Laya (Jev).
+ */
+export type CardinalityBucket = "2" | "3-5" | "6-10" | "11+";
+
+/**
  * Opções para calibração estatística
  */
 export interface CalibrationOptions {
   /**
-   * Temperatura para scaling de logits (padrão: 1.0)
+   * Temperatura para scaling de logits (padrão: 1.0 ou derivada por bucket de cardinalidade).
    * Temperaturas mais baixas aumentam o contraste; mais altas suavizam.
    */
   temperature?: number;
+
+  /**
+   * Mapeamento de temperaturas específicas por bucket de cardinalidade.
+   */
+  temperatureByCardinality?: Partial<Record<CardinalityBucket, number>>;
 
   /**
    * Limiar de similaridade mínima para detecção de Out-of-Distribution (OOD).

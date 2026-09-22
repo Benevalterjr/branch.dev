@@ -1,3 +1,5 @@
+import type { DecideResponseDto } from "./decide-response.dto.js";
+
 /**
  * Opção individual estruturada com descrição opcional
  */
@@ -41,7 +43,21 @@ export interface DecideRequestDto<T extends string = string> {
 
   /**
    * Limiar de confiança mínima (0.0 a 1.0). Se definido e a decisão não atingir esse valor,
-   * lança LowConfidenceException.
+   * aciona o fallback (se fornecido) ou lança LowConfidenceException.
    */
   minConfidence?: number;
+
+  /**
+   * Alias semântico para minConfidence (0.0 a 1.0).
+   */
+  confidenceThreshold?: number;
+
+  /**
+   * Handler de fallback acionado automaticamente quando a decisão do Sistema 1 for insegura
+   * (confiança abaixo do limiar ou entrada Out-of-Distribution).
+   * Permite delegar transparentemente para um LLM (Groq, Claude, OpenAI) ou regra determinística.
+   */
+  fallback?: (
+    decision: DecideResponseDto<T>
+  ) => Promise<T | DecideResponseDto<T>> | T | DecideResponseDto<T>;
 }

@@ -15,7 +15,7 @@ export class MakeDecisionUseCase {
     request: DecideRequestDto<T>
   ): Promise<DecideResponseDto<T>> {
     // 1. Normalização de escolhas
-    const candidates = this.normalizeCandidates(request.choices);
+    const candidates = MakeDecisionUseCase.normalizeCandidates(request.choices);
 
     if (candidates.length < 2) {
       throw new InvalidChoicesException();
@@ -32,13 +32,12 @@ export class MakeDecisionUseCase {
       temperature: request.temperature,
     });
 
-    // 4. Validação de confiança mínima opcional
-    if (request.minConfidence !== undefined) {
-      decision.assertConfidence(request.minConfidence);
-    }
+    // 4. Metacognição e Avaliação de Confiança
+    const effectiveThreshold = request.confidenceThreshold ?? request.minConfidence;
+    const isBelowConfidence = effectiveThreshold !== undefined && decision.confidence < effectiveThreshold;
+    const isUncertain = decision.isOOD || isBelowConfidence;
 
-    // 5. Mapeamento para DTO de Resposta
-    return {
+    const baseResponse: DecideResponseDto<T> = {
       winner: decision.winner,
       confidence: decision.confidence,
       isOOD: decision.isOOD,
@@ -46,13 +45,42 @@ export class MakeDecisionUseCase {
       normalizedEntropy: decision.normalizedEntropy,
       probabilities: decision.probabilities,
       latencyMs: decision.latencyMs,
+      system: "system1",
+      actProbability: decision.isOOD ? 0.0 : decision.confidence,
+      delegatedToFallback: false,
     };
+
+    // 5. Acionamento do Fallback Sistema 2 se a decisão for incerta ou OOD
+    if (request.fallback && isUncertain) {
+      const fallbackResult = await request.fallback(baseResponse);
+      if (typeof fallbackResult === "string") {
+        return {
+          ...baseResponse,
+          winner: fallbackResult as T,
+          system: "system2",
+          delegatedToFallback: true,
+        };
+      }
+      return {
+        ...baseResponse,
+        ...fallbackResult,
+        system: "system2",
+        delegatedToFallback: true,
+      };
+    }
+
+    // 6. Salvaguarda de confiança mínima se configurada e sem fallback
+    if (request.minConfidence !== undefined) {
+      decision.assertConfidence(request.minConfidence);
+    }
+
+    return baseResponse;
   }
 
   /**
    * Normaliza qualquer formato de entrada de escolhas em uma lista padronizada de ChoiceCandidate
    */
-  private normalizeCandidates<T extends string>(choices: ChoiceInput<T>): ChoiceCandidate<T>[] {
+  public static normalizeCandidates<T extends string>(choices: ChoiceInput<T>): ChoiceCandidate<T>[] {
     const seen = new Set<string>();
     const candidates: ChoiceCandidate<T>[] = [];
 

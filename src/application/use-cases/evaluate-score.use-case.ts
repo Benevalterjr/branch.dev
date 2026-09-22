@@ -53,12 +53,44 @@ export class EvaluateScoreUseCase {
       decision.latencyMs
     );
 
-    return {
+    const effectiveThreshold = request.confidenceThreshold ?? request.minConfidence;
+    const isBelowConfidence = effectiveThreshold !== undefined && scoreDecision.confidence < effectiveThreshold;
+    const isUncertain = decision.isOOD || isBelowConfidence;
+
+    const baseResponse: ScoreResponseDto = {
       score: scoreDecision.score,
       probabilities: numericProbs,
       confidence: scoreDecision.confidence,
       isOOD: decision.isOOD,
       latencyMs: scoreDecision.latencyMs,
+      system: "system1",
+      actProbability: decision.isOOD ? 0.0 : scoreDecision.confidence,
+      delegatedToFallback: false,
     };
+
+    if (request.fallback && isUncertain) {
+      const fallbackResult = await request.fallback(baseResponse);
+      if (typeof fallbackResult === "number") {
+        return {
+          ...baseResponse,
+          score: fallbackResult,
+          system: "system2",
+          delegatedToFallback: true,
+        };
+      }
+      return {
+        ...baseResponse,
+        ...fallbackResult,
+        system: "system2",
+        delegatedToFallback: true,
+      };
+    }
+
+    if (request.minConfidence !== undefined) {
+      scoreDecision.assertConfidence(request.minConfidence);
+    }
+
+    return baseResponse;
   }
 }
+

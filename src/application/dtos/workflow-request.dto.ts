@@ -7,6 +7,20 @@ export type NoulOrBooleanQuestion = {
   affirmativeDescription?: string;
   negativeDescription?: string;
   temperature?: number;
+  confidenceThreshold?: number;
+  minConfidence?: number;
+  fallback?: (res: {
+    type: "boolean" | "noul";
+    noul: number;
+    value: boolean;
+    probability: number;
+    confidence: number;
+    isOOD: boolean;
+    latencyMs: number;
+  }) =>
+    | Promise<boolean | { value: boolean; confidence?: number }>
+    | boolean
+    | { value: boolean; confidence?: number };
 };
 
 export type ScoreQuestion = {
@@ -16,6 +30,19 @@ export type ScoreQuestion = {
   scale?: Record<number, string>;
   criteria?: readonly string[] | Record<number, string>; // TypeSafe alias
   temperature?: number;
+  confidenceThreshold?: number;
+  minConfidence?: number;
+  fallback?: (res: {
+    type: "score";
+    score: number;
+    legend: Record<number, string>;
+    probabilities: Record<number, number>;
+    confidence: number;
+    latencyMs: number;
+  }) =>
+    | Promise<number | { score: number; confidence?: number }>
+    | number
+    | { score: number; confidence?: number };
 };
 
 export type ChoiceQuestion<C extends string = string> = {
@@ -25,6 +52,19 @@ export type ChoiceQuestion<C extends string = string> = {
   choices?: readonly C[] | Record<string, C> | Record<C, string> | ChoiceInput<C>;
   criteria?: Record<C, string> | readonly C[]; // TypeSafe alias
   temperature?: number;
+  confidenceThreshold?: number;
+  minConfidence?: number;
+  fallback?: (res: {
+    type: "choice";
+    choice: C;
+    probabilities: Record<C, number>;
+    confidence: number;
+    isOOD: boolean;
+    latencyMs: number;
+  }) =>
+    | Promise<C | { choice: C; confidence?: number }>
+    | C
+    | { choice: C; confidence?: number };
 };
 
 /**
@@ -64,6 +104,9 @@ export type InferAnswer<Q extends WorkflowQuestion> =
         confidence: number;
         isOOD: boolean;
         latencyMs: number;
+        system?: "system1" | "system2";
+        actProbability?: number;
+        delegatedToFallback?: boolean;
       }
     : Q extends ScoreQuestion
     ? {
@@ -73,6 +116,9 @@ export type InferAnswer<Q extends WorkflowQuestion> =
         probabilities: Record<number, number>;
         confidence: number;
         latencyMs: number;
+        system?: "system1" | "system2";
+        actProbability?: number;
+        delegatedToFallback?: boolean;
       }
     : Q extends ChoiceQuestion<string>
     ? {
@@ -82,6 +128,9 @@ export type InferAnswer<Q extends WorkflowQuestion> =
         confidence: number;
         isOOD: boolean;
         latencyMs: number;
+        system?: "system1" | "system2";
+        actProbability?: number;
+        delegatedToFallback?: boolean;
       }
     : never;
 
@@ -94,6 +143,8 @@ export interface WorkflowRequestDto<
   state: unknown;
   model?: string;
   questions: TQuestions;
+  /** Limiar de confiança global opcional aplicado a todas as perguntas do workflow */
+  confidenceThreshold?: number;
 }
 
 /**
@@ -105,9 +156,12 @@ export interface WorkflowResponseDto<
   model?: string;
   answers: { [K in keyof TQuestions]: InferAnswer<TQuestions[K]> };
   totalLatencyMs: number;
+  /** Indica se todas as perguntas foram Sistema 1 ou se alguma recorreu a fallback (Sistema 2) */
+  system?: "system1" | "system2";
   usage?: {
     input_tokens: number;
     output_tokens: number;
     cost_usd: number;
   };
 }
+

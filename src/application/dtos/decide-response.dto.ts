@@ -17,4 +17,17 @@ export interface DecideResponseDto<T extends string = string> {
   probabilities: Record<T, number>;
   /** Tempo de processamento em milissegundos. */
   latencyMs: number;
+  /**
+   * Indica se a decisão foi tomada localmente pelo Sistema 1 ou delegada ao Sistema 2 (fallback/LLM).
+   */
+  system?: "system1" | "system2";
+  /**
+   * Probabilidade estimada para o agente agir autonomamente (metacognição).
+   * Se for Out-of-Distribution (OOD), o valor é 0.0.
+   */
+  actProbability?: number;
+  /**
+   * Indica se a decisão foi resolvida por um fallback do Sistema 2.
+   */
+  delegatedToFallback?: boolean;
 }

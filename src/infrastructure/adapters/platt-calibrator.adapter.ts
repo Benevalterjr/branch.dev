@@ -1,17 +1,49 @@
-import { ICalibrator, CalibrationOptions } from "../../domain/ports/calibrator.port.js";
+import { ICalibrator, CalibrationOptions, CardinalityBucket } from "../../domain/ports/calibrator.port.js";
 import { ProbabilityDistribution } from "../../domain/entities/probability.vo.js";
 
 /**
+ * Determina o bucket de cardinalidade a partir do número de escolhas (K).
+ * Alinhado ao padrão de categorização do Laya (Jev).
+ */
+export function getCardinalityBucket(k: number): CardinalityBucket {
+  if (k <= 2) return "2";
+  if (k <= 5) return "3-5";
+  if (k <= 10) return "6-10";
+  return "11+";
+}
+
+/**
+ * Temperaturas padrão por bucket de cardinalidade.
+ * - k=2: 0.45 (equilíbrio para decisões binárias)
+ * - k=3-5: 0.50 (padrão balanceado)
+ * - k=6-10: 0.58 (evita subconfiança em cauda média)
+ * - k=11+: 0.70 (evita colapso excessivo de probabilidade em grandes conjuntos)
+ */
+export const DEFAULT_CARDINALITY_TEMPERATURES: Record<CardinalityBucket, number> = {
+  "2": 0.45,
+  "3-5": 0.50,
+  "6-10": 0.58,
+  "11+": 0.70,
+};
+
+/**
  * Adaptador de Calibração Estatística: PlattTemperatureCalibrator
- * Implementa Temperature Scaling com Z-Score Standardization e Detecção de Out-of-Distribution (OOD).
+ * Implementa Temperature Scaling sensível à cardinalidade (tempBucket), Z-Score Standardization
+ * e Detecção de Out-of-Distribution (OOD).
  */
 export class PlattTemperatureCalibrator implements ICalibrator {
   private readonly defaultTemperature: number;
   private readonly defaultOodThreshold: number;
+  private readonly temperatureByCardinality: Partial<Record<CardinalityBucket, number>>;
 
-  constructor(defaultTemperature: number = 0.5, defaultOodThreshold: number = 0.15) {
+  constructor(
+    defaultTemperature: number = 0.5,
+    defaultOodThreshold: number = 0.15,
+    temperatureByCardinality: Partial<Record<CardinalityBucket, number>> = {}
+  ) {
     this.defaultTemperature = defaultTemperature;
     this.defaultOodThreshold = defaultOodThreshold;
+    this.temperatureByCardinality = temperatureByCardinality;
   }
 
   public calibrate<T extends string = string>(
@@ -20,7 +52,22 @@ export class PlattTemperatureCalibrator implements ICalibrator {
     options?: CalibrationOptions
   ): ProbabilityDistribution<T> {
     const n = rawLogits.length;
-    const temperature = Math.max(0.05, options?.temperature ?? this.defaultTemperature);
+    const bucket = getCardinalityBucket(n);
+
+    // Resolução hierárquica de temperatura:
+    // 1. options.temperature explícito (prioridade máxima / retrocompatibilidade)
+    // 2. options.temperatureByCardinality[bucket]
+    // 3. this.temperatureByCardinality[bucket]
+    // 4. DEFAULT_CARDINALITY_TEMPERATURES[bucket]
+    // 5. this.defaultTemperature
+    const rawTemp =
+      options?.temperature ??
+      options?.temperatureByCardinality?.[bucket] ??
+      this.temperatureByCardinality[bucket] ??
+      DEFAULT_CARDINALITY_TEMPERATURES[bucket] ??
+      this.defaultTemperature;
+
+    const temperature = Math.max(0.05, rawTemp);
     const oodThreshold = options?.oodThreshold ?? this.defaultOodThreshold;
 
     // 1. Verificação de Out-of-Distribution (Distância Mínima ao Espaço das Opções)

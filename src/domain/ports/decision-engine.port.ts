@@ -28,4 +28,13 @@ export interface IDecisionEngine {
   evaluate<T extends string = string>(
     params: EngineExecutionParams<T>
   ): Promise<Decision<T>>;
+
+  /**
+   * Avalia um lote de parâmetros de decisão em uma única passada vetorial,
+   * eliminando passadas redundantes na CPU e acelerando workflows.
+   */
+  evaluateBatch?<T extends string = string>(
+    batchParams: EngineExecutionParams<T>[]
+  ): Promise<Decision<T>[]>;
 }
+
