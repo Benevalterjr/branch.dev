@@ -7,6 +7,7 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
+    "test": "npm run test:cardinality && npm run test:adaptive && npm run test:fallback",
     "example:churn": "tsx examples/churn-risk.ts",
     "example:router": "tsx examples/smart-router.ts",
     "example:parity": "tsx examples/typesafe-parity.ts",

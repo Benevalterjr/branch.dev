@@ -1,5 +1,10 @@
 # ⚡ Branch.dev (`@branch/core`)
 
+[![CI](https://github.com/Benevalterjr/branch.dev/actions/workflows/ci.yml/badge.svg)](https://github.com/Benevalterjr/branch.dev/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.5+-3178C6.svg)](https://www.typescriptlang.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-%3E%3D20.0.0-339933.svg)](https://nodejs.org/)
+
 > **The Smart If-Statement for Modern Code.**  
 > Decisões probabilísticas tipadas, calibradas e auditáveis em **CPU pura**, sem geração de texto, sem chamadas autoregressivas e sem chaves de API.
 
