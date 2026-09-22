@@ -1,7 +1,7 @@
 # ⚡ Branch.dev (`@branch/core`)
 
-> **The Smart If-Statement for Modern Code.**
-> Decisões probabilísticas tipadas e calibradas em **< 2ms** em CPU pura, sem geração de texto, sem chamadas autoregressivas e sem chaves de API.
+> **The Smart If-Statement for Modern Code.**  
+> Decisões probabilísticas tipadas, calibradas e auditáveis em **CPU pura**, sem geração de texto, sem chamadas autoregressivas e sem chaves de API.
 
 Um concorrente de código aberto, local-first e centrado em Clean Architecture para o **TypeSafe / System One / Jev**.
 
@@ -9,13 +9,15 @@ Um concorrente de código aberto, local-first e centrado em Clean Architecture p
 
 ## 🎯 Por que o Branch.dev?
 
-Enquanto LLMs generativos (ChatGPT, Claude) levam **2.000ms a 10.000ms** para gerar texto e tentar formatá-lo em JSON, e soluções proprietárias exigem nuvens fechadas e listas de espera:
+Enquanto LLMs generativos (ChatGPT, Claude) levam **2.000 ms a 10.000 ms** para gerar texto, torram tokens a cada decisão e quebram contratos de tipo em JSON:
 
-* **100% Local (Hack 2):** Roda direto no seu processo Node.js / TypeScript em CPU. Zero chave de API, zero cartão de crédito.
-* **Clean Architecture:** Desacoplamento estrito entre Domínio, Casos de Uso, Infraestrutura e Apresentação.
-* **Zero Tokens & Zero KV Cache (GPULESS):** Elimina a geração autoregressiva. Executa uma única passada vetorial com **TurboQuant** (produto escalar otimizado e quantização online).
-* **Latência de ~1.3ms:** Até **50x mais rápido** que o TypeSafe (70-500ms) e **1000x mais rápido** que LLMs tradicionais.
-* **Decisões Calibradas:** Probabilidades normalizadas (soma = 100%) com Temperature Scaling e Z-Score Standardization para segurança operacional.
+* **100% Local & CPU-Native:** Roda direto no processo Node.js / TypeScript sobre **`onnxruntime-node` oficial** e **`@huggingface/tokenizers` (Rust)**. Zero chave de API, zero cartão de crédito e 0 vulnerabilidades.
+* **Metacognição & Fallback Sistema 1 ➔ Sistema 2:** O motor estima a própria certeza (`confidence`, `isOOD`, `actProbability`). Se a incerteza for alta ou o dado for Out-of-Distribution, delega graciosamente a um fallback (LLM em nuvem ou operador humano).
+* **Single Forward Pass Batching:** Avalia múltiplas perguntas sobre o mesmo estado em uma única passada vetorial pelo modelo na CPU (estilo Laya/ModernBERT), reduzindo a latência de workflows para ~200 ms.
+* **Calibração por Bucket de Cardinalidade (`tempBucket`):** Mapeamento empírico da temperatura de Platt scaling para 2, 3-5, 6-10 e 11+ opções, evitando subconfiança em binárias e colapso de entropia em conjuntos amplos.
+* **Zero Tokens & Zero KV Cache (GPULESS):** Elimina a geração autoregressiva. Executa similaridade geométrica com **TurboQuant** (produto escalar otimizado e quantização online).
+* **Aprendizado Contínuo Sem Re-treinamento:** Ancoragem por **`PrototypeStore`** (centróides semânticos few-shot) e calibração adaptativa online via SGD e Brier Score.
+* **Clean Architecture Estrita:** Desacoplamento total entre Domínio, Casos de Uso, Infraestrutura e Apresentação.
 
 ---
 
@@ -26,46 +28,54 @@ src/
 ├── domain/                         # Enterprise Business Rules (Zero dependências externas)
 │   ├── entities/
 │   │   ├── decision.entity.ts      # Entidade Decision (vencedor, probabilidades, guard clauses)
+│   │   ├── boolean-decision.entity.ts # Entidade de Decisão Binária / Noul
+│   │   ├── score-decision.entity.ts   # Entidade de Decisão Ordinal / Valor Esperado E[X]
 │   │   ├── probability.vo.ts       # Value Object de Distribuição de Probabilidades
 │   │   └── state-context.vo.ts     # Value Object para canonicalização semântica do estado
 │   ├── ports/                      # Interfaces / Contratos de Domínio
 │   │   ├── embedding-model.port.ts # Porta de vetorização
-│   │   ├── calibrator.port.ts      # Porta para calibração estatística de logits
-│   │   ├── decision-engine.port.ts # Porta abstrata do motor de decisão
+│   │   ├── calibrator.port.ts      # Porta de calibração estatística e CardinalityBucket
+│   │   ├── decision-engine.port.ts # Porta abstrata do motor (evaluate e evaluateBatch)
 │   │   ├── adaptive-calibrator.port.ts # Porta para calibração adaptativa online
 │   │   ├── prototype-store.port.ts # Porta para centróides e few-shot exemplars
 │   │   └── feedback-store.port.ts  # Porta para rastreabilidade e auditoria de feedbacks
 │   └── exceptions/
-│       └── domain-exceptions.ts    # Exceções (LowConfidenceException, InvalidState)
+│       └── domain-exceptions.ts    # Exceções de Domínio (LowConfidenceException, InvalidState)
 │
 ├── application/                    # Application Business Rules
 │   ├── dtos/
-│   │   ├── decide-request.dto.ts   # DTOs tipados com suporte a Enums e Arrays
-│   │   └── decide-response.dto.ts  # DTOs de retorno
+│   │   ├── decide-request.dto.ts   # DTOs tipados com fallback e confidenceThreshold
+│   │   ├── decide-response.dto.ts  # DTOs de retorno (system, actProbability, delegatedToFallback)
+│   │   ├── boolean-request.dto.ts  # DTOs da Primitiva Boolean
+│   │   ├── score-request.dto.ts    # DTOs da Primitiva Score
+│   │   └── workflow-request.dto.ts # DTOs de Workflow com Mapped Types e inferência estrita
 │   └── use-cases/
-│       └── make-decision.use-case.ts # Orquestrador da tomada de decisão
+│       ├── make-decision.use-case.ts   # Orquestrador da primitiva Choice + Fallback
+│       ├── evaluate-boolean.use-case.ts# Orquestrador da primitiva Boolean + Fallback
+│       ├── evaluate-score.use-case.ts  # Orquestrador da primitiva Score + Fallback
+│       └── run-workflow.use-case.ts    # Execução em lote vetorial unificado (Single Pass)
 │
 ├── infrastructure/                 # Frameworks & Drivers
 │   ├── adapters/
-│   │   ├── onnx-embedding.adapter.ts          # Adaptador ONNX + Resilient Local Sparse Projection
-│   │   ├── platt-calibrator.adapter.ts        # Calibrador Platt com Z-Score Standardization
+│   │   ├── onnx-embedding.adapter.ts          # ONNX Runtime CPU + HF Tokenizers + Schannel download
+│   │   ├── platt-calibrator.adapter.ts        # Calibrador Platt com buckets de cardinalidade
 │   │   ├── adaptive-platt-calibrator.adapter.ts # Calibrador adaptativo com penalidade de overconfidence
 │   │   ├── in-memory-prototype-store.adapter.ts # Protótipos L2 e few-shot centróides em RAM
 │   │   ├── in-memory-feedback-store.adapter.ts  # Histórico e auditoria de métricas em RAM
-│   │   └── local-decision-engine.adapter.ts   # Motor não-autoregressivo com cache de escolhas
+│   │   └── local-decision-engine.adapter.ts   # Motor com cache vetorial e evaluateBatch
 │   └── quant/
-│       └── turbo-quant.ts          # Primitivas de quantização rápida e produto escalar (arXiv:2504.19874)
+│       └── turbo-quant.ts          # Primitivas de quantização rápida e produto escalar
 │
 └── presentation/                   # Developer Experience (DevEx)
-    ├── branch-client.ts            # Fachada configurável com feedback e exemplares
-    └── index.ts                    # Função global decide(), configure() e re-exports
+    ├── branch-client.ts            # Fachada configurável (decide, boolean, score, systemOne)
+    └── index.ts                    # Funções globais e atalhos ergonômicos
 ```
 
 ---
 
 ## 🚀 Como Usar
 
-### 1. Predição de Risco com TypeScript Enum (Exemplo do Artigo)
+### 1. Primitiva Choice (Smart If-Statement com Enum ou Objeto)
 
 ```typescript
 import { decide } from "@branch/core";
@@ -94,32 +104,36 @@ const result = await decide<ChurnRisk>({
   task: "avaliar probabilidade e risco de churn do cliente"
 });
 
-console.log(result.winner); // "alto"
-console.log(result.confidence); // 0.999 (99.9%)
-console.log(result.probabilities);
-// { baixo: 0.00, medio: 0.001, alto: 0.999 }
+console.log(result.winner);        // "alto"
+console.log(result.confidence);    // 0.999 (99.9%)
+console.log(result.probabilities); // { baixo: 0.00, medio: 0.001, alto: 0.999 }
 
-// Smart If-Statement com lógica determinística:
+// Decisão determinística em código:
 if (result.probabilities[ChurnRisk.HIGH] > 0.60) {
   await offerRetentionDiscount();
 }
 ```
 
-### 2. Primitiva Noul / Boolean (True/False com Probabilidade Calibrada)
+---
+
+### 2. Primitiva Noul / Boolean (Avaliação Binária Contínua)
 
 ```typescript
 import { boolean } from "@branch/core";
 
 const refundCheck = await boolean({
   state: ticketContext,
-  question: "O cliente está solicitando cancelamento de cobrança ou estorno?"
+  question: "O cliente está solicitando cancelamento de cobrança ou estorno?",
 });
 
-console.log(refundCheck.value); // true
-console.log(refundCheck.probability); // 0.982 (98.2% de certeza)
+console.log(refundCheck.value);       // true
+console.log(refundCheck.probability); // 0.982 (98.2% de probabilidade)
+console.log(refundCheck.system);      // "system1"
 ```
 
-### 3. Primitiva Score (Valor Esperado em Escala Ordinal)
+---
+
+### 3. Primitiva Score (Valor Esperado $E[X]$ em Escala Ordinal)
 
 ```typescript
 import { score } from "@branch/core";
@@ -134,77 +148,91 @@ const frustration = await score({
   }
 });
 
-console.log(frustration.score); // 1.89 (na escala de 0 a 2)
+console.log(frustration.score); // 1.89 (pontuação contínua ponderada pelas probabilidades)
 ```
 
-### 4. Workflow Multi-Perguntas Simultâneo (All-in-One Parallel)
+---
+
+### 4. Workflow Multi-Perguntas & Atalho `systemOne()`
+
+Avalie dezenas de perguntas sobre o mesmo estado em uma **única passada vetorial pelo modelo na CPU**:
 
 ```typescript
-import { workflow } from "@branch/core";
+import { systemOne } from "@branch/core";
 
-const result = await workflow({
-  state: caseState,
-  questions: {
-    isRefund: { type: "boolean", question: "Solicita estorno?" },
-    duplicateEvidence: { type: "boolean", question: "Há evidência de cobrança duplicada?" },
-    frustration: {
-      type: "score",
-      question: "Frustração",
-      scale: { 0: "calmo", 1: "irritado", 2: "furioso" }
-    },
-    team: {
-      type: "choice",
-      question: "Qual time deve cuidar?",
-      choices: ["billing", "technical", "account"] as const
-    }
+const result = await systemOne(caseState, {
+  isRefund: {
+    type: "boolean",
+    instructions: "Solicita estorno?",
+  },
+  frustration: {
+    type: "score",
+    instructions: "Nível de frustração",
+    criteria: { 0: "calmo", 1: "irritado", 2: "furioso" },
+  },
+  team: {
+    type: "choice",
+    instructions: "Qual time deve cuidar?",
+    choices: ["billing", "technical", "account"] as const,
   }
 });
 
-if (result.answers.isRefund.probability > 0.8 && result.answers.duplicateEvidence.probability > 0.8) {
-  await approveRefundAutomatically();
-}
+// Acesso 100% tipado via Mapped Types na IDE:
+console.log(result.answers.isRefund.value);      // boolean
+console.log(result.answers.frustration.score);   // number
+console.log(result.answers.team.choice);         // "billing" | "technical" | "account"
+console.log(result.totalLatencyMs);              // ~200 ms total na CPU
 ```
 
-### 5. Suporte Multilíngue e Modelos Customizados (PT-BR, ES, 50+ idiomas)
+---
 
-Por padrão, o Branch.dev utiliza `Xenova/all-MiniLM-L6-v2` (~22MB, ultrarrápido em inglês). Para máxima precisão em **Português** e mais de 50 idiomas, você pode configurar o modelo global ou instanciar o `BranchClient`:
+### 5. Metacognição e Fallback Sistema 1 ➔ Sistema 2
+
+Se a confiança do modelo local for insuficiente ou o dado for Out-of-Distribution (OOD), o Branch aciona o fallback de forma totalmente transparente:
 
 ```typescript
-import { BranchClient, BRANCH_EMBEDDING_MODELS, configure } from "@branch/core";
+import { decide } from "@branch/core";
 
-// Opção A: Reconfigurar globalmente (afeta decide(), boolean(), score(), workflow())
-configure({
-  modelName: BRANCH_EMBEDDING_MODELS.MULTILINGUAL_BALANCED, // Xenova/paraphrase-multilingual-MiniLM-L12-v2 (~118MB)
+const decision = await decide({
+  state: complexTicket,
+  choices: ["billing", "devops", "legal"],
+  confidenceThreshold: 0.80, // Se confiança local < 80% ou OOD
+  fallback: async (prev) => {
+    console.log(`Sistema 1 incerto (${(prev.confidence * 100).toFixed(1)}%). Acionando LLM...`);
+    return await callClaudeOrGptFallback(complexTicket);
+  }
 });
 
-// Opção B: Instância dedicada
+console.log(decision.winner);              // ex: "legal"
+console.log(decision.system);              // "system1" (resolvido localmente) ou "system2" (via fallback)
+console.log(decision.delegatedToFallback); // true / false
+console.log(decision.actProbability);      // probabilidade para agir autonomamente (0.0 se for OOD)
+```
+
+---
+
+### 6. Catálogo de Modelos Suportados (`BRANCH_EMBEDDING_MODELS`)
+
+| Constante | Modelo Hugging Face | Camadas | Dim | Tamanho | Recomendação de Uso |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `FAST_EN` | `Xenova/all-MiniLM-L6-v2` | 6 | 384 | ~22 MB | **Padrão:** Latência ultra-baixa em inglês |
+| `ACCURATE_EN` | `Xenova/all-MiniLM-L12-v2` | 12 | 384 | ~34 MB | Maior profundidade analítica em inglês |
+| `MULTILINGUAL_BALANCED` | `Xenova/paraphrase-multilingual-MiniLM-L12-v2` | 12 | 384 | ~118 MB | **Recomendado para Português (PT-BR)** e 50+ línguas |
+| `MULTILINGUAL_E5_SMALL` | `Xenova/multilingual-e5-small` | 12 | 384 | ~120 MB | Alta densidade semântica multilíngue |
+
+```typescript
+import { BranchClient, BRANCH_EMBEDDING_MODELS } from "@branch/core";
+
 const client = new BranchClient({
   modelName: BRANCH_EMBEDDING_MODELS.MULTILINGUAL_BALANCED,
 });
 ```
 
-Modelos pré-configurados disponíveis via `BRANCH_EMBEDDING_MODELS`:
-* `FAST_EN`: `Xenova/all-MiniLM-L6-v2` (384 dim, ~22MB, latência mínima em inglês)
-* `MULTILINGUAL_BALANCED`: `Xenova/paraphrase-multilingual-MiniLM-L12-v2` (384 dim, ~118MB, recomendado para PT-BR e 50+ idiomas)
-* `MULTILINGUAL_E5_SMALL`: `Xenova/multilingual-e5-small` (384 dim, ~120MB, alta precisão semântica)
+---
 
-### 6. Fail-Safe com Trava de Confiabilidade
+### 7. Aprendizado Contínuo com Protótipos e Calibração Adaptativa
 
-```typescript
-// Se a IA não tiver pelo menos 80% de certeza, envia para um humano
-try {
-  result.assertConfidence(0.80);
-  await executeAutomatically();
-} catch (e) {
-  if (e instanceof LowConfidenceException) {
-    await sendToHumanReviewQueue(customer, e.winner, e.confidence);
-  }
-}
-```
-
-### 7. Aprendizado Contínuo (Few-Shot Prototypes & Calibração Adaptativa)
-
-Sem modelos pesados ou re-treinamentos caros, o Branch.dev aprende com feedbacks de operadores e exemplos em produção mantendo inferência em **< 2ms**:
+Enriqueça opções com exemplos empíricos de produção (**Few-Shot Exemplars**) e ajuste a temperatura dinamicamente com base em feedback humano via Online SGD (Brier Score):
 
 ```typescript
 import {
@@ -216,58 +244,66 @@ import {
 
 const client = new BranchClient({
   modelName: BRANCH_EMBEDDING_MODELS.MULTILINGUAL_BALANCED,
-  adaptiveCalibrator: true, // Ajusta temperatura dinamicamente com base em acertos/erros
-  prototypeStore: new InMemoryPrototypeStore(), // Centróides semânticos com interpolação L2
-  feedbackStore: new InMemoryFeedbackStore(), // Auditoria e métricas de acurácia
+  adaptiveCalibrator: true, // Ajusta a temperatura automaticamente via SGD
+  prototypeStore: new InMemoryPrototypeStore(), // Centróides semânticos L2 em RAM
+  feedbackStore: new InMemoryFeedbackStore(),
 });
 
-// 1. Enriquecer uma escolha com exemplos empíricos do mundo real:
-await client.addExample("devops", {
-  log: "Pod redis reiniciando por OOM killer e timeout no ingress",
+// Ancorar um arquétipo empírico:
+await client.addExample("HOLD", {
+  cenario: "Mercado em consolidação lateral sem volume expressivo",
 });
 
-// 2. Registrar feedback humano em produção para refinar a calibração:
+// Registrar feedback operacional de acerto/erro:
 await client.recordFeedback({
-  choice: "devops",
+  choice: "HOLD",
   wasCorrect: true,
-  confidence: 0.95,
+  confidence: 0.90,
   addAsExample: true,
 });
 ```
 
 ---
 
-## 📊 Benchmarks Reais
+### 8. Caso Real: Trading de Alta Frequência PETR4.SA na B3
 
-### 1. Branch.dev vs LLM em Nuvem (Qwen 3.8 27B na Groq / Gemini)
-
-Executado comparando decisões idênticas de *Smart If-Statement* contra modelos de ponta em nuvem:
+Demonstração prática conectando o Branch ao **Yahoo Finance em tempo real** para calcular indicadores técnicos (RSI, SMAs, volume relativo) e tomar decisões de `HOLD / BUY / SELL` com metacognição:
 
 ```bash
-npm run benchmark:llm
+# Execução pontual:
+npx tsx examples/petr4-trading.ts
+
+# Monitoramento contínuo em loop a cada 30 segundos:
+npx tsx examples/petr4-trading.ts --loop
 ```
+
+---
+
+## 📊 Benchmarks Reais
+
+### 1. Branch.dev vs LLM em Nuvem (Qwen na Groq / Gemini)
+
+Executado comparando decisões idênticas de *Smart If-Statement* contra modelos de ponta em nuvem (`npm run benchmark:llm`):
 
 | Métrica / Critério | LLM em Nuvem (Qwen na Groq / Gemini) | **Branch.dev (`@branch/core`)** |
 | :--- | :--- | :--- |
 | **Custo de Token** | ~$0.15 a $2.50 / 1k decisões (500+ tokens/caso) | **$0.00 (Grátis, zero tokens)** |
-| **Latência no Brasil** | 240 ms – 900 ms *(limitado por tráfego de rede e rota internacional)* | **In-Process local (zero rede)** |
+| **Latência no Brasil** | 240 ms – 900 ms *(tráfego de rede e rota internacional)* | **In-Process local (zero tráfego de rede)** |
 | **Privacidade / LGPD** | Dados do cliente trafegam para servidores externos | **100% Local (dados nunca saem da memória)** |
 | **Risco de Hallucination / JSON** | Risco de formato inválido, requer retry/regex | **Zero (retorno tipado estrito via TypeScript)** |
 | **Resiliência Offline** | Dependência obrigatória de internet / API | **100% Funcional offline sem conexão** |
-| **Throughput em Produção** | Sujeito a Rate Limits (HTTP 429) e filas | **Decisões concorrentes ilimitadas em CPU** |
+| **Throughput em Produção** | Sujeito a Rate Limits (HTTP 429) e filas | **Decisões concorrentes ilimitadas na CPU** |
+
+---
 
 ### 2. Micro-Benchmark de Inferência TurboQuant (CPU Pura)
 
 Executado em ambiente local (Node.js, CPU comum sem GPU):
 
-```bash
-npm run benchmark
-```
-
 | Métrica | LLM Tradicional (ex: GPT-4o-mini) | TypeSafe / Jev | **Branch.dev** |
 | :--- | :--- | :--- | :--- |
-| **Latência da Decisão Geométrica** | 1.800 ms – 5.000 ms | 70 ms – 500 ms | **< 2 ms** |
-| **Consumo de Memória** | Gigabytes de VRAM | Servidor externo | **~25 MB de RAM** |
+| **Latência da Decisão Geométrica** | 1.800 ms – 5.000 ms | 70 ms – 500 ms | **< 2 ms** *(cache quente)* |
+| **Consumo de Memória** | Gigabytes de VRAM | Servidor proprietário | **~35 MB de RAM** |
 | **Dependência Externa** | Chave OpenAI / Cartão | Nuvem proprietária | **Zero (100% Local)** |
 
 ---
@@ -275,15 +311,31 @@ npm run benchmark
 ## 💻 Scripts Disponíveis
 
 ```bash
+# Compilação e Tipagem
 npm run build                 # Compila o projeto TypeScript para dist/
 npm run typecheck             # Validação estrita de tipos (zero erros)
+
+# Exemplos de Negócio
 npm run example:churn         # Predição de risco de churn em português
-npm run example:router        # Roteamento inteligente de tickets de suporte
+npm run example:router        # Roteamento inteligente de chamados de suporte
 npm run example:parity        # Paridade com as 3 primitivas da TypeSafe (Boolean, Score, Choice)
 npm run example:multilingual  # Teste prático do modelo multilíngue (PT-BR)
 npm run example:adaptive      # Aprendizado contínuo com Few-Shot Prototypes e feedback
+npm run trading:petr4         # Trading algorítmico de PETR4.SA na B3 em tempo real
+
+# Testes de Sistema e Calibração
+npm run test:cardinality      # Validação dos buckets de Platt scaling (tempBucket)
+npm run test:fallback         # Teste de metacognição e transição Sistema 1 ➔ Sistema 2
 npm run test:adaptive         # Validação empírica do otimizador SGD no Brier Score
+
+# Benchmarks
 npm run benchmark             # Micro-benchmark de throughput de CPU
 npm run benchmark:llm         # Benchmark comparativo: Branch.dev vs Qwen (Groq) / Gemini
 npm run benchmark:asteroid    # Simulação aeroespacial 3D sob pressão: Branch.dev vs Groq (Qwen)
 ```
+
+---
+
+## 📄 Licença
+
+MIT © [Branch.dev](https://github.com/Benevalterjr/branch.dev)
