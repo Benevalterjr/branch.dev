@@ -2,8 +2,9 @@ import { ProbabilityDistribution } from "../entities/probability.vo.js";
 
 /**
  * Buckets de cardinalidade baseados no número de escolhas disponíveis (K).
- * Inspirado na calibração por cardinalidade do Laya (Jev).
+ * Calibração de temperatura segmentada por cardinalidade de escolhas.
  */
+
 export type CardinalityBucket = "2" | "3-5" | "6-10" | "11+";
 
 /**

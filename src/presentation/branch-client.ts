@@ -154,9 +154,10 @@ export class BranchClient {
   }
 
   /**
-   * Executa a inferência não-autoregressiva do Sistema 1 (estilo Laya/ModernBERT).
+   * Executa a inferência não-autoregressiva do Sistema 1.
    * Avalia múltiplas perguntas tipadas sobre o mesmo estado em uma única passada de rede neural na CPU.
    */
+
   public async systemOne<
     TQuestions extends Record<string, WorkflowQuestion> = Record<string, WorkflowQuestion>
   >(

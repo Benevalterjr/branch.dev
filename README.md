@@ -13,7 +13,7 @@ Enquanto LLMs generativos (ChatGPT, Claude) levam **2.000 ms a 10.000 ms** para 
 
 * **100% Local & CPU-Native:** Roda direto no processo Node.js / TypeScript sobre **`onnxruntime-node` oficial** e **`@huggingface/tokenizers` (Rust)**. Zero chave de API, zero cartão de crédito e 0 vulnerabilidades.
 * **Metacognição & Fallback Sistema 1 ➔ Sistema 2:** O motor estima a própria certeza (`confidence`, `isOOD`, `actProbability`). Se a incerteza for alta ou o dado for Out-of-Distribution, delega graciosamente a um fallback (LLM em nuvem ou operador humano).
-* **Single Forward Pass Batching:** Avalia múltiplas perguntas sobre o mesmo estado em uma única passada vetorial pelo modelo na CPU (estilo Laya/ModernBERT), reduzindo a latência de workflows para ~200 ms.
+* **Single Forward Pass Batching:** Avalia múltiplas perguntas sobre o mesmo estado em uma única passada vetorial pelo modelo na CPU, reduzindo a latência de workflows para ~200 ms.
 * **Calibração por Bucket de Cardinalidade (`tempBucket`):** Mapeamento empírico da temperatura de Platt scaling para 2, 3-5, 6-10 e 11+ opções, evitando subconfiança em binárias e colapso de entropia em conjuntos amplos.
 * **Zero Tokens & Zero KV Cache (GPULESS):** Elimina a geração autoregressiva. Executa similaridade geométrica com **TurboQuant** (produto escalar otimizado e quantização online).
 * **Aprendizado Contínuo Sem Re-treinamento:** Ancoragem por **`PrototypeStore`** (centróides semânticos few-shot) e calibração adaptativa online via SGD e Brier Score.

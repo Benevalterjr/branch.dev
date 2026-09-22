@@ -47,7 +47,8 @@ export class RunWorkflowUseCase {
   }
 
   /**
-   * Execução em passada única vetorial agrupada (Laya-style batching)
+   * Execução em passada única vetorial agrupada
+   * Todos os textos do estado e escolhas são tokenizados e projetados em lote.
    */
   private async executeBatched<
     TQuestions extends Record<string, WorkflowQuestion> = Record<string, WorkflowQuestion>

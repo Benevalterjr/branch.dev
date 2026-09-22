@@ -90,7 +90,7 @@ export async function evaluateAll<
 }
 
 /**
- * Executa a inferência não-autoregressiva do Sistema 1 (estilo Laya/ModernBERT).
+ * Executa a inferência não-autoregressiva do Sistema 1.
  * Avalia múltiplas perguntas tipadas sobre o mesmo estado em uma única passada de rede neural na CPU.
  */
 export async function systemOne<

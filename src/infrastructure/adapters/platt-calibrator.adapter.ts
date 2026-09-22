@@ -3,8 +3,9 @@ import { ProbabilityDistribution } from "../../domain/entities/probability.vo.js
 
 /**
  * Determina o bucket de cardinalidade a partir do número de escolhas (K).
- * Alinhado ao padrão de categorização do Laya (Jev).
+ * Categorização adaptativa por cardinalidade de escolhas.
  */
+
 export function getCardinalityBucket(k: number): CardinalityBucket {
   if (k <= 2) return "2";
   if (k <= 5) return "3-5";
