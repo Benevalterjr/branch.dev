@@ -1,5 +1,6 @@
 import { ProbabilityDistribution } from "./probability.vo.js";
 import { LowConfidenceException } from "../exceptions/domain-exceptions.js";
+import type { ActionPolicy, ActionPolicyThresholds } from "./decision.entity.js";
 
 /**
  * Entidade: ScoreDecision (Equivalente à primitiva 'Score' da TypeSafe)
@@ -9,6 +10,7 @@ import { LowConfidenceException } from "../exceptions/domain-exceptions.js";
 export class ScoreDecision {
   public readonly score: number;
   public readonly scale: readonly number[];
+  public readonly actionPolicy: ActionPolicy;
   public readonly distribution: ProbabilityDistribution<string>;
   public readonly isOOD: boolean;
   public readonly latencyMs: number;
@@ -19,7 +21,8 @@ export class ScoreDecision {
     scale: readonly number[],
     distribution: ProbabilityDistribution<string>,
     latencyMs: number,
-    timestampMs: number = Date.now()
+    timestampMs: number = Date.now(),
+    actionPolicyThresholds?: ActionPolicyThresholds
   ) {
     if (!Number.isFinite(score)) { score = 0; }
     this.score = Number(score.toFixed(2));
@@ -28,6 +31,18 @@ export class ScoreDecision {
     this.isOOD = distribution.isOOD;
     this.latencyMs = latencyMs;
     this.timestampMs = timestampMs;
+
+    const automateThreshold = actionPolicyThresholds?.automate ?? 0.80;
+    const verifyThreshold = actionPolicyThresholds?.verify ?? 0.50;
+    if (this.isOOD) {
+      this.actionPolicy = "ESCALATE";
+    } else if (this.distribution.confidence >= automateThreshold) {
+      this.actionPolicy = "AUTOMATE";
+    } else if (this.distribution.confidence >= verifyThreshold) {
+      this.actionPolicy = "VERIFY";
+    } else {
+      this.actionPolicy = "ESCALATE";
+    }
   }
 
   public get probabilities(): Record<string, number> {

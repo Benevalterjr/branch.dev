@@ -50,6 +50,7 @@ export class EvaluateBooleanUseCase {
       value: booleanDecision.value,
       probability: booleanDecision.probability,
       confidence: booleanDecision.confidence,
+      actionPolicy: booleanDecision.actionPolicy,
       isOOD: booleanDecision.isOOD,
       latencyMs: booleanDecision.latencyMs,
       system: "system1",
@@ -65,6 +66,7 @@ export class EvaluateBooleanUseCase {
           value: fallbackResult,
           system: "system2",
           delegatedToFallback: true,
+          actionPolicy: "AUTOMATE",
         };
       }
       return {
@@ -72,6 +74,7 @@ export class EvaluateBooleanUseCase {
         ...fallbackResult,
         system: "system2",
         delegatedToFallback: true,
+        actionPolicy: fallbackResult.actionPolicy ?? "AUTOMATE",
       };
     }
 

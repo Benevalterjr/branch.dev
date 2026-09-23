@@ -6,6 +6,14 @@ import type { DecideResponseDto } from "./decide-response.dto.js";
 export interface ChoiceOption<T extends string = string> {
   id: T;
   description?: string;
+  /** Limiar de confiança específico para esta opção (Risk-Aware Threshold) */
+  minConfidence?: number;
+}
+
+export interface ChoiceDetail {
+  description?: string;
+  /** Limiar de confiança específico para esta opção (Risk-Aware Threshold) */
+  minConfidence?: number;
 }
 
 /**
@@ -14,7 +22,7 @@ export interface ChoiceOption<T extends string = string> {
 export type ChoiceInput<T extends string = string> =
   | readonly T[]
   | Record<string, T>
-  | Record<T, string>
+  | Record<T, string | ChoiceDetail>
   | readonly ChoiceOption<T>[];
 
 /**

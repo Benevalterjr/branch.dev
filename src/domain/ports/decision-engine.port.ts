@@ -7,6 +7,8 @@ import { StateContext } from "../entities/state-context.vo.js";
 export interface ChoiceCandidate<T extends string = string> {
   id: T;
   description: string;
+  /** Limiar de confiança mínimo específico para esta escolha (Risk-Aware Threshold) */
+  minConfidence?: number;
 }
 
 /**

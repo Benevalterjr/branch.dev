@@ -141,7 +141,7 @@ export class RunWorkflowUseCase {
           temperature: q.temperature,
         };
 
-        return { key, q, instructions, engineParams, type: "choice" as const };
+        return { key, q, instructions, candidates, engineParams, type: "choice" as const };
       }
 
       throw new UnsupportedQuestionTypeException((q as { type: string }).type);
@@ -178,6 +178,7 @@ export class RunWorkflowUseCase {
           value: booleanDecision.value,
           probability: booleanDecision.probability,
           confidence: booleanDecision.confidence,
+          actionPolicy: booleanDecision.actionPolicy,
           isOOD: booleanDecision.isOOD,
           latencyMs: booleanDecision.latencyMs,
           system: "system1",
@@ -188,9 +189,9 @@ export class RunWorkflowUseCase {
         if (item.q.fallback && isUncertain) {
           const fallbackRes = await item.q.fallback(ans as any);
           if (typeof fallbackRes === "boolean") {
-            ans = { ...ans, value: fallbackRes, system: "system2", delegatedToFallback: true };
+            ans = { ...ans, value: fallbackRes, system: "system2", delegatedToFallback: true, actionPolicy: "AUTOMATE" };
           } else if (typeof fallbackRes === "object" && fallbackRes !== null) {
-            ans = { ...ans, ...fallbackRes, system: "system2", delegatedToFallback: true };
+            ans = { ...ans, ...fallbackRes, system: "system2", delegatedToFallback: true, actionPolicy: (fallbackRes as any).actionPolicy ?? "AUTOMATE" };
           }
         } else if (item.q.minConfidence !== undefined) {
           booleanDecision.assertConfidence(item.q.minConfidence);
@@ -227,6 +228,7 @@ export class RunWorkflowUseCase {
           legend: item.scale!,
           probabilities: numericProbs,
           confidence: scoreDecision.confidence,
+          actionPolicy: scoreDecision.actionPolicy,
           isOOD: decision.isOOD,
           latencyMs: scoreDecision.latencyMs,
           system: "system1",
@@ -237,9 +239,9 @@ export class RunWorkflowUseCase {
         if (item.q.fallback && isUncertain) {
           const fallbackRes = await item.q.fallback(ans as any);
           if (typeof fallbackRes === "number") {
-            ans = { ...ans, score: fallbackRes, system: "system2", delegatedToFallback: true };
+            ans = { ...ans, score: fallbackRes, system: "system2", delegatedToFallback: true, actionPolicy: "AUTOMATE" };
           } else if (typeof fallbackRes === "object" && fallbackRes !== null) {
-            ans = { ...ans, ...fallbackRes, system: "system2", delegatedToFallback: true };
+            ans = { ...ans, ...fallbackRes, system: "system2", delegatedToFallback: true, actionPolicy: (fallbackRes as any).actionPolicy ?? "AUTOMATE" };
           }
         } else if (item.q.minConfidence !== undefined) {
           scoreDecision.assertConfidence(item.q.minConfidence);
@@ -250,8 +252,12 @@ export class RunWorkflowUseCase {
       }
 
       if (item.type === "choice") {
+        const winningCandidate = item.candidates?.find((c) => c.id === decision.winner);
+        const candidateThreshold = winningCandidate?.minConfidence;
+        const effectiveChoiceThreshold =
+          candidateThreshold ?? item.q.confidenceThreshold ?? item.q.minConfidence ?? request.confidenceThreshold;
         const isBelowConfidence =
-          effectiveThreshold !== undefined && decision.confidence < effectiveThreshold;
+          effectiveChoiceThreshold !== undefined && decision.confidence < effectiveChoiceThreshold;
         const isUncertain = decision.isOOD || isBelowConfidence;
 
         let ans: Record<string, unknown> = {
@@ -259,6 +265,7 @@ export class RunWorkflowUseCase {
           choice: decision.winner,
           probabilities: decision.probabilities,
           confidence: decision.confidence,
+          actionPolicy: decision.actionPolicy,
           isOOD: decision.isOOD,
           latencyMs: decision.latencyMs,
           system: "system1",
@@ -269,12 +276,12 @@ export class RunWorkflowUseCase {
         if (item.q.fallback && isUncertain) {
           const fallbackRes = await item.q.fallback(ans as any);
           if (typeof fallbackRes === "string") {
-            ans = { ...ans, choice: fallbackRes, system: "system2", delegatedToFallback: true };
+            ans = { ...ans, choice: fallbackRes, system: "system2", delegatedToFallback: true, actionPolicy: "AUTOMATE" };
           } else if (typeof fallbackRes === "object" && fallbackRes !== null) {
-            ans = { ...ans, ...fallbackRes, system: "system2", delegatedToFallback: true };
+            ans = { ...ans, ...fallbackRes, system: "system2", delegatedToFallback: true, actionPolicy: (fallbackRes as any).actionPolicy ?? "AUTOMATE" };
           }
         } else if (item.q.minConfidence !== undefined) {
-          decision.assertConfidence(item.q.minConfidence);
+          decision.assertConfidence(effectiveChoiceThreshold ?? item.q.minConfidence);
         }
 
         answers[item.key] = ans;

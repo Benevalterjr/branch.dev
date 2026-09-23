@@ -1,4 +1,5 @@
 import { LowConfidenceException } from "../exceptions/domain-exceptions.js";
+import type { ActionPolicy, ActionPolicyThresholds } from "./decision.entity.js";
 
 /**
  * Entidade: BooleanDecision (Equivalente à primitiva 'Noul' da TypeSafe)
@@ -9,6 +10,7 @@ export class BooleanDecision {
   public readonly value: boolean;
   public readonly probability: number; // Probabilidade de ser verdadeiro (0.00 a 1.00)
   public readonly confidence: number;  // Grau de certeza: max(P(true), P(false))
+  public readonly actionPolicy: ActionPolicy;
   public readonly isOOD: boolean;
   public readonly latencyMs: number;
   public readonly timestampMs: number;
@@ -17,7 +19,8 @@ export class BooleanDecision {
     trueProbability: number,
     latencyMs: number,
     isOOD: boolean = false,
-    timestampMs: number = Date.now()
+    timestampMs: number = Date.now(),
+    actionPolicyThresholds?: ActionPolicyThresholds
   ) {
     if (!Number.isFinite(trueProbability)) { trueProbability = 0.5; }
     this.isOOD = isOOD;
@@ -29,6 +32,18 @@ export class BooleanDecision {
       : Math.max(this.probability, Number((1 - this.probability).toFixed(4)));
     this.latencyMs = latencyMs;
     this.timestampMs = timestampMs;
+
+    const automateThreshold = actionPolicyThresholds?.automate ?? 0.80;
+    const verifyThreshold = actionPolicyThresholds?.verify ?? 0.50;
+    if (this.isOOD) {
+      this.actionPolicy = "ESCALATE";
+    } else if (this.confidence >= automateThreshold) {
+      this.actionPolicy = "AUTOMATE";
+    } else if (this.confidence >= verifyThreshold) {
+      this.actionPolicy = "VERIFY";
+    } else {
+      this.actionPolicy = "ESCALATE";
+    }
   }
 
   public isConfident(threshold: number = 0.70): boolean {

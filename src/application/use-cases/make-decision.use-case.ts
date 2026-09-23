@@ -32,14 +32,19 @@ export class MakeDecisionUseCase {
       temperature: request.temperature,
     });
 
-    // 4. Metacognição e Avaliação de Confiança
-    const effectiveThreshold = request.confidenceThreshold ?? request.minConfidence;
-    const isBelowConfidence = effectiveThreshold !== undefined && decision.confidence < effectiveThreshold;
+    // 4. Metacognição e Avaliação de Confiança (Risk-Aware Thresholds por Escolha)
+    const winningCandidate = candidates.find((c) => c.id === decision.winner);
+    const candidateThreshold = winningCandidate?.minConfidence;
+    const effectiveThreshold =
+      candidateThreshold ?? request.confidenceThreshold ?? request.minConfidence;
+    const isBelowConfidence =
+      effectiveThreshold !== undefined && decision.confidence < effectiveThreshold;
     const isUncertain = decision.isOOD || isBelowConfidence;
 
     const baseResponse: DecideResponseDto<T> = {
       winner: decision.winner,
       confidence: decision.confidence,
+      actionPolicy: decision.actionPolicy,
       isOOD: decision.isOOD,
       entropy: decision.entropy,
       normalizedEntropy: decision.normalizedEntropy,
@@ -59,6 +64,7 @@ export class MakeDecisionUseCase {
           winner: fallbackResult as T,
           system: "system2",
           delegatedToFallback: true,
+          actionPolicy: "AUTOMATE",
         };
       }
       return {
@@ -66,12 +72,13 @@ export class MakeDecisionUseCase {
         ...fallbackResult,
         system: "system2",
         delegatedToFallback: true,
+        actionPolicy: fallbackResult.actionPolicy ?? "AUTOMATE",
       };
     }
 
     // 6. Salvaguarda de confiança mínima se configurada e sem fallback
-    if (request.minConfidence !== undefined) {
-      decision.assertConfidence(request.minConfidence);
+    if (effectiveThreshold !== undefined && request.minConfidence !== undefined) {
+      decision.assertConfidence(effectiveThreshold);
     }
 
     return baseResponse;
@@ -95,7 +102,11 @@ export class MakeDecisionUseCase {
           const opt = item as ChoiceOption<T>;
           if (!seen.has(opt.id)) {
             seen.add(opt.id);
-            candidates.push({ id: opt.id, description: opt.description ?? opt.id });
+            candidates.push({
+              id: opt.id,
+              description: opt.description ?? opt.id,
+              minConfidence: opt.minConfidence,
+            });
           }
         }
       }
@@ -131,12 +142,21 @@ export class MakeDecisionUseCase {
           }
         }
       } else {
-        // Objeto literal ou string enum: chave = id, valor = descrição
+        // Objeto literal ou string enum: chave = id, valor = descrição ou ChoiceDetail
         for (const [key, val] of entries) {
           const id = key as T;
           if (!seen.has(id)) {
             seen.add(id);
-            candidates.push({ id, description: String(val) });
+            if (typeof val === 'object' && val !== null) {
+              const detail = val as { description?: string; minConfidence?: number };
+              candidates.push({
+                id,
+                description: detail.description ?? id,
+                minConfidence: detail.minConfidence,
+              });
+            } else {
+              candidates.push({ id, description: String(val) });
+            }
           }
         }
       }

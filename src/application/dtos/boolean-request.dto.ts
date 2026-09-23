@@ -50,6 +50,8 @@ export interface BooleanRequestDto {
     | Partial<BooleanResponseDto>;
 }
 
+import type { ActionPolicy } from "../../domain/entities/decision.entity.js";
+
 /**
  * DTO de Saída para a Primitiva Boolean (Noul)
  * Dados puros serializáveis (sem métodos/closures).
@@ -61,6 +63,8 @@ export interface BooleanResponseDto {
   probability: number;
   /** Nível de certeza geral da decisão (max(P(true), P(false))) */
   confidence: number;
+  /** Semáforo operacional de decisão: "AUTOMATE" | "VERIFY" | "ESCALATE" */
+  actionPolicy: ActionPolicy;
   /** Indica se a entrada é Out-of-Distribution (fora do domínio esperado) */
   isOOD: boolean;
   /** Latência da inferência em milissegundos */

@@ -7,6 +7,11 @@
 // Public API (Presentation Layer)
 export * from './presentation/index.js';
 
+// Domain Entities & Types
+export { Decision, type ActionPolicy, type ActionPolicyThresholds } from './domain/entities/decision.entity.js';
+export { BooleanDecision } from './domain/entities/boolean-decision.entity.js';
+export { ScoreDecision } from './domain/entities/score-decision.entity.js';
+
 // Domain Ports (for custom implementations)
 export * from './domain/ports/embedding-model.port.js';
 export * from './domain/ports/calibrator.port.js';

@@ -2,12 +2,26 @@ import { ProbabilityDistribution } from "./probability.vo.js";
 import { LowConfidenceException } from "../exceptions/domain-exceptions.js";
 
 /**
+ * Política de Ação recomendada (Semáforo de Decisão):
+ * - "AUTOMATE": Alta certeza (>= 0.80) -> Execução direta e autônoma.
+ * - "VERIFY": Certeza intermediária (0.50 a 0.80) -> Requer confirmação, 2FA, log de auditoria.
+ * - "ESCALATE": Certeza baixa (< 0.50) ou Out-of-Distribution (OOD) -> Escalar para Sistema 2 ou humano.
+ */
+export type ActionPolicy = "AUTOMATE" | "VERIFY" | "ESCALATE";
+
+export interface ActionPolicyThresholds {
+  automate?: number;
+  verify?: number;
+}
+
+/**
  * Entidade de Domínio: Decision
  * Representa uma decisão tomada pelo sistema, seus metadados de confiabilidade, entropia e latência.
  */
 export class Decision<T extends string = string> {
   public readonly winner: T;
   public readonly confidence: number;
+  public readonly actionPolicy: ActionPolicy;
   public readonly distribution: ProbabilityDistribution<T>;
   public readonly isOOD: boolean;
   public readonly entropy: number;
@@ -18,7 +32,8 @@ export class Decision<T extends string = string> {
   constructor(
     distribution: ProbabilityDistribution<T>,
     latencyMs: number,
-    timestampMs: number = Date.now()
+    timestampMs: number = Date.now(),
+    actionPolicyThresholds?: ActionPolicyThresholds
   ) {
     this.distribution = distribution;
     this.winner = distribution.winner;
@@ -28,6 +43,18 @@ export class Decision<T extends string = string> {
     this.normalizedEntropy = distribution.normalizedEntropy;
     this.latencyMs = latencyMs;
     this.timestampMs = timestampMs;
+
+    const automateThreshold = actionPolicyThresholds?.automate ?? 0.80;
+    const verifyThreshold = actionPolicyThresholds?.verify ?? 0.50;
+    if (this.isOOD) {
+      this.actionPolicy = "ESCALATE";
+    } else if (this.confidence >= automateThreshold) {
+      this.actionPolicy = "AUTOMATE";
+    } else if (this.confidence >= verifyThreshold) {
+      this.actionPolicy = "VERIFY";
+    } else {
+      this.actionPolicy = "ESCALATE";
+    }
   }
 
   /**

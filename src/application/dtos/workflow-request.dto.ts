@@ -91,6 +91,8 @@ export type InferChoice<Q> =
     ? C
     : string;
 
+import type { ActionPolicy } from "../../domain/entities/decision.entity.js";
+
 /**
  * Mapped Type avançado para inferir a resposta exata de cada pergunta na IDE
  */
@@ -102,6 +104,7 @@ export type InferAnswer<Q extends WorkflowQuestion> =
         value: boolean;
         probability: number;
         confidence: number;
+        actionPolicy: ActionPolicy;
         isOOD: boolean;
         latencyMs: number;
         system?: "system1" | "system2";
@@ -115,6 +118,8 @@ export type InferAnswer<Q extends WorkflowQuestion> =
         legend: Record<number, string>;
         probabilities: Record<number, number>;
         confidence: number;
+        actionPolicy: ActionPolicy;
+        isOOD: boolean;
         latencyMs: number;
         system?: "system1" | "system2";
         actProbability?: number;
@@ -126,6 +131,7 @@ export type InferAnswer<Q extends WorkflowQuestion> =
         choice: InferChoice<Q>;
         probabilities: Record<InferChoice<Q>, number>;
         confidence: number;
+        actionPolicy: ActionPolicy;
         isOOD: boolean;
         latencyMs: number;
         system?: "system1" | "system2";

@@ -61,6 +61,7 @@ export class EvaluateScoreUseCase {
       score: scoreDecision.score,
       probabilities: numericProbs,
       confidence: scoreDecision.confidence,
+      actionPolicy: scoreDecision.actionPolicy,
       isOOD: decision.isOOD,
       latencyMs: scoreDecision.latencyMs,
       system: "system1",
@@ -76,6 +77,7 @@ export class EvaluateScoreUseCase {
           score: fallbackResult,
           system: "system2",
           delegatedToFallback: true,
+          actionPolicy: "AUTOMATE",
         };
       }
       return {
@@ -83,6 +85,7 @@ export class EvaluateScoreUseCase {
         ...fallbackResult,
         system: "system2",
         delegatedToFallback: true,
+        actionPolicy: fallbackResult.actionPolicy ?? "AUTOMATE",
       };
     }
 

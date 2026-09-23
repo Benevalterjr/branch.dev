@@ -46,6 +46,8 @@ export interface ScoreRequestDto {
     | Partial<ScoreResponseDto>;
 }
 
+import type { ActionPolicy } from "../../domain/entities/decision.entity.js";
+
 /**
  * DTO de Saída para a Primitiva Score
  * Dados puros serializáveis.
@@ -57,6 +59,8 @@ export interface ScoreResponseDto {
   probabilities: Record<number, number>;
   /** Grau de confiança na categoria de maior probabilidade */
   confidence: number;
+  /** Semáforo operacional de decisão: "AUTOMATE" | "VERIFY" | "ESCALATE" */
+  actionPolicy: ActionPolicy;
   /** Indica se a entrada é Out-of-Distribution */
   isOOD: boolean;
   /** Latência da inferência em milissegundos */
