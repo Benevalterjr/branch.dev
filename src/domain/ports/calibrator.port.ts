@@ -27,6 +27,13 @@ export interface CalibrationOptions {
    * Se o maior logit for inferior a esse limiar, a entrada é classificada como OOD (padrão: 0.15).
    */
   oodThreshold?: number;
+
+  /**
+   * Piso mínimo de desvio padrão (Variance Floor) para regularização de Z-Score.
+   * Evita divisão por zero ou colapso degenerado de probabilidade em cardinalidade binária (k=2)
+   * ou dispersões minúsculas entre opções (padrão: 0.15).
+   */
+  minStdFloor?: number;
 }
 
 /**

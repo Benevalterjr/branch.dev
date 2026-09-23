@@ -151,7 +151,9 @@ export class AdaptivePlattCalibrator
       return { gradient: 0, brierScore: 0.5 };
     }
 
-    const zScores = logits.map((val) => (val - mean) / std);
+    const minStdFloor = 0.15;
+    const effectiveStd = Math.max(std, minStdFloor);
+    const zScores = logits.map((val) => (val - mean) / effectiveStd);
 
     // 2. Softmax numericamente estável com temperatura atual
     const s = zScores.map((z) => z / this.temperature);

@@ -97,8 +97,17 @@ export class PlattTemperatureCalibrator implements ICalibrator {
       return new ProbabilityDistribution<T>(uniform as Record<T, number>, isOOD);
     }
 
-    // 3. Logits padronizados com escala de temperatura
-    const zScores = rawLogits.map((val) => (val - mean) / (std * temperature));
+    // 2.1 Regularização de Variância (Variance Floor):
+    // Em decisões binárias (k <= 2), std = |x1 - x2| / 2. Dividir puramente por std anula matematicamente
+    // a magnitude da diferença |x1 - x2|, colapsando (x1 - mean) / std em identicamente +1 e -1,
+    // o que força qualquer decisão binária a uma probabilidade fixa (ex: 93.5% em T=0.75).
+    // O piso mínimo (effectiveStd = Math.max(std, minStdFloor)) garante que deltas sutis gerem
+    // probabilidades proporcionais e moderadas, preservando o contraste em deltas expressivos.
+    const minStdFloor = options?.minStdFloor ?? 0.15;
+    const effectiveStd = Math.max(std, minStdFloor);
+
+    // 3. Logits padronizados com escala de temperatura e variância regularizada
+    const zScores = rawLogits.map((val) => (val - mean) / (effectiveStd * temperature));
 
     let maxZ = -Infinity;
     for (const z of zScores) {

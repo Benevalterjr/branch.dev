@@ -105,31 +105,52 @@ const branch = new BranchClient({
  * Isso ancora geometricamente o espaço vetorial em situações reais de mercado.
  */
 async function seedTradingPrototypes() {
-  // Arquétipo de HOLD: volume baixo, sem fluxo, preço indeciso entre médias, RSI neutro
+  // Arquétipos de HOLD: consolidação, volume baixo, mercado sem fluxo direcional
   await branch.addExample("HOLD", {
     condicao: "Consolidação morna sem volume institucional",
-    volumeRelativo: "0.35x do médio",
-    rsi14: 55,
-    posicaoSMA: "preço oscilando entre médias sem direção",
+    volumeRelativo: "0.55x do médio",
+    rsi14: 52,
+    posicaoSMA: "preço oscilando entre médias sem direção clara",
     fluxo: "mercado lateral de baixa liquidez, preservação de capital recomendada",
   });
+  await branch.addExample("HOLD", {
+    condicao: "Indecisão técnica com sinais divergentes entre prazos",
+    volumeRelativo: "0.75x do médio",
+    rsi14: 56,
+    posicaoSMA: "sustentado acima de médias móveis mas sem volume de rompimento",
+    fluxo: "acumulação cautelosa sem gatilho de aceleração",
+  });
 
-  // Arquétipo de BUY: rompimento com volume alto, momentum forte, médias alinhadas para cima
+  // Arquétipos de BUY: fluxo comprador institucional, expansão de volume e momentum
   await branch.addExample("BUY", {
     condicao: "Rompimento autêntico com entrada de fluxo comprador pesado",
-    volumeRelativo: "2.10x do médio",
-    rsi14: 62,
+    volumeRelativo: "1.80x do médio",
+    rsi14: 63,
     posicaoSMA: "preço rompendo acima de todas as médias com candle de força",
     fluxo: "pressão compradora institucional dominante",
   });
+  await branch.addExample("BUY", {
+    condicao: "Continuidade de tendência de alta confirmada por volume",
+    volumeRelativo: "1.35x do médio",
+    rsi14: 60,
+    posicaoSMA: "sustentado firmemente acima da SMA9 e SMA21 com volume comprador",
+    fluxo: "fluxo positivo consistente com suporte de compra",
+  });
 
-  // Arquétipo de SELL: perda de suporte com volume de despejo, médias viradas para baixo
+  // Arquétipos de SELL: quebra de suporte relevante com volume vendedor
   await branch.addExample("SELL", {
     condicao: "Despejo institucional com quebra de suporte e volume vendedor elevado",
-    volumeRelativo: "1.90x do médio",
+    volumeRelativo: "1.70x do médio",
     rsi14: 32,
     posicaoSMA: "preço cravando mínima abaixo das médias com confirmação",
     fluxo: "distribuição e realização agressiva de lucros",
+  });
+  await branch.addExample("SELL", {
+    condicao: "Exaustão compradora com perda de momentum e divergência de baixa",
+    volumeRelativo: "1.40x do médio",
+    rsi14: 28,
+    posicaoSMA: "comprimido abaixo de ambas as médias com pressão vendedora",
+    fluxo: "saída institucional acelerada",
   });
 }
 
@@ -239,11 +260,11 @@ async function fetchMarketState(): Promise<MarketState> {
   const volumeRelativo = volRatio.toFixed(2) + "x";
 
   const volumeStatus =
-    volRatio < 0.5
-      ? "Volume muito fraco (sem fluxo institucional dominante)"
-      : volRatio > 1.5
-      ? "Volume atipicamente forte (presença institucional confirmada)"
-      : "Volume dentro da média esperada";
+    volRatio < 0.70
+      ? "Volume abaixo da média (fluxo institucional reduzido)"
+      : volRatio > 1.30
+      ? "Volume forte (fluxo institucional presente)"
+      : "Volume em linha com a média esperada";
 
   const rsiStatus =
     rsi14 > 70
@@ -254,15 +275,15 @@ async function fetchMarketState(): Promise<MarketState> {
 
   const mercadoAberto = quote.marketState === "REGULAR";
 
-  // Tendência intraday: média dos últimos 6 candles vs 12 anteriores
-  let tendenciaIntraday = "lateral";
+  // Tendência intraday: média dos últimos 6 candles vs 12 anteriores (filtro de ruído com limiar de 0.5%)
+  let tendenciaIntraday = "lateral em consolidação";
   if (intradayQuotes.length >= 18) {
     const last6 =
       intradayQuotes.slice(-6).reduce((s, q) => s + (q.close as number), 0) / 6;
     const prev12 =
       intradayQuotes.slice(-18, -6).reduce((s, q) => s + (q.close as number), 0) / 12;
-    if (last6 > prev12 * 1.002) tendenciaIntraday = "altista (compras no curto prazo)";
-    else if (last6 < prev12 * 0.998) tendenciaIntraday = "baixista (vendas no curto prazo)";
+    if (last6 > prev12 * 1.005) tendenciaIntraday = "altista no intraday";
+    else if (last6 < prev12 * 0.995) tendenciaIntraday = "corretiva no intraday";
   }
 
   // Posição relativa às SMAs
@@ -274,8 +295,8 @@ async function fetchMarketState(): Promise<MarketState> {
 
   // Diagnóstico sintético
   const diagnosticoTecnico =
-    volRatio < 0.5
-      ? "Mercado morno em consolidação lateral sem liquidez ou gatilho direcional."
+    volRatio < 0.75
+      ? "Consolidação morna com liquidez abaixo da média e ausência de aceleração institucional."
       : "Movimentação com liquidez ativa no ativo.";
 
   return {
@@ -337,61 +358,82 @@ ESCOLHA: <HOLD | BUY | SELL>
 JUSTIFICATIVA: <frase curta>`;
 
   const t0 = performance.now();
-  try {
-    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${GROQ_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: GROQ_MODEL,
-        messages: [{ role: "user", content: prompt }],
-        temperature: 0.0,
-        max_tokens: 60,
-      }),
-    });
+  const maxAttempts = 2;
 
-    const t1 = performance.now();
-    const latencyMs = Number((t1 - t0).toFixed(1));
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${GROQ_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: GROQ_MODEL,
+          messages: [{ role: "user", content: prompt }],
+          temperature: 0.0,
+          max_tokens: 60,
+        }),
+        signal: AbortSignal.timeout(4000), // Timeout rígido de 4s para evitar travamento em rede
+      });
 
-    if (!res.ok) {
-      const err = await res.text();
+      const t1 = performance.now();
+      const latencyMs = Number((t1 - t0).toFixed(1));
+
+      if (!res.ok) {
+        if (attempt < maxAttempts) {
+          await new Promise((r) => setTimeout(r, 400));
+          continue;
+        }
+        return {
+          choice: "HOLD",
+          confidence: 0.70,
+          justification: `Erro Groq (${res.status}). Mantendo postura neutra de segurança.`,
+          latencyMs,
+        };
+      }
+
+      const data = (await res.json()) as any;
+      const text: string = data.choices?.[0]?.message?.content || "";
+
+      let choice: "BUY" | "HOLD" | "SELL" = "HOLD";
+      if (/\bBUY\b/i.test(text)) choice = "BUY";
+      else if (/\bSELL\b/i.test(text)) choice = "SELL";
+      else choice = "HOLD";
+
+      const justMatch = text.match(/JUSTIFICATIVA:\s*(.*)/i);
+      const justification = justMatch
+        ? justMatch[1].trim()
+        : text.replace(/ESCOLHA:.*?\n/i, "").trim() || "Consolidação e preservação de capital.";
+
+      return {
+        choice,
+        confidence: 0.88,
+        justification,
+        latencyMs,
+      };
+    } catch (err: any) {
+      if (attempt < maxAttempts) {
+        await new Promise((r) => setTimeout(r, 400));
+        continue;
+      }
+      const t1 = performance.now();
+      const latencyMs = Number((t1 - t0).toFixed(1));
       return {
         choice: "HOLD",
         confidence: 0.70,
-        justification: `Erro Groq (${res.status}). Mantendo postura neutra de segurança.`,
+        justification: `Falha de rede (${err.message ?? "timeout"}). Postura defensiva adotada.`,
         latencyMs,
       };
     }
-
-    const data = (await res.json()) as any;
-    const text: string = data.choices?.[0]?.message?.content || "";
-
-    let choice: "BUY" | "HOLD" | "SELL" = "HOLD";
-    if (/\bBUY\b/i.test(text)) choice = "BUY";
-    else if (/\bSELL\b/i.test(text)) choice = "SELL";
-    else choice = "HOLD";
-
-    const justMatch = text.match(/JUSTIFICATIVA:\s*(.*)/i);
-    const justification = justMatch
-      ? justMatch[1].trim()
-      : text.replace(/ESCOLHA:.*?\n/i, "").trim() || "Consolidação e preservação de capital.";
-
-    return {
-      choice,
-      confidence: 0.88,
-      justification,
-      latencyMs,
-    };
-  } catch (err: any) {
-    return {
-      choice: "HOLD",
-      confidence: 0.70,
-      justification: `Falha de rede (${err.message}). Postura defensiva adotada.`,
-      latencyMs: 0,
-    };
   }
+
+  return {
+    choice: "HOLD",
+    confidence: 0.70,
+    justification: "Postura defensiva de preservação de capital.",
+    latencyMs: 0,
+  };
 }
 
 // ─── Execução do Branch SystemOne com Calibração Refinada ──────────────────────
