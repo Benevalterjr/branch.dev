@@ -6,6 +6,7 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc",
+    "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
     "test": "npm run test:cardinality && npm run test:adaptive && npm run test:fallback",
     "example:churn": "tsx examples/churn-risk.ts",

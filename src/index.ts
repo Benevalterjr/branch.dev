@@ -16,3 +16,8 @@ export * from './domain/ports/decision-engine.port.js';
 export { OnnxEmbeddingAdapter, BRANCH_EMBEDDING_MODELS, type SupportedEmbeddingModel } from './infrastructure/adapters/onnx-embedding.adapter.js';
 export { PlattTemperatureCalibrator, getCardinalityBucket, DEFAULT_CARDINALITY_TEMPERATURES } from './infrastructure/adapters/platt-calibrator.adapter.js';
 export { LocalDecisionEngine } from './infrastructure/adapters/local-decision-engine.adapter.js';
+
+// Se executado diretamente como script de entrada (ex: padrão do Render com 'node dist/index.js')
+if (typeof require !== 'undefined' && require.main === module) {
+  require('./server.js');
+}
