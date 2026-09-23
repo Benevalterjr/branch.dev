@@ -16,7 +16,12 @@ export interface ScoreRequestDto {
    * Escala ordinal mapeando valores numéricos a descrições semânticas.
    * Exemplo: { 0: "calmo", 1: "frustrado", 2: "muito frustrado" }
    */
-  scale: Record<number, string>;
+  scale?: Record<number, string>;
+
+  /**
+   * Alias de conveniência para scale (objeto ou array de critérios)
+   */
+  criteria?: Record<number, string> | readonly string[];
 
   /**
    * Temperatura para calibração estatística

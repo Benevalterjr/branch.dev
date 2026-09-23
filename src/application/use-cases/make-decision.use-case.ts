@@ -30,6 +30,7 @@ export class MakeDecisionUseCase {
       candidates,
       taskDescription: request.task,
       temperature: request.temperature,
+      oodThreshold: request.oodThreshold,
     });
 
     // 4. Metacognição e Avaliação de Confiança (Risk-Aware Thresholds por Escolha)

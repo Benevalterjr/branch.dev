@@ -61,6 +61,12 @@ export interface DecideRequestDto<T extends string = string> {
   confidenceThreshold?: number;
 
   /**
+   * Limiar de corte para detecção de Out-of-Distribution (OOD).
+   * Padrão: 0.15.
+   */
+  oodThreshold?: number;
+
+  /**
    * Handler de fallback acionado automaticamente quando a decisão do Sistema 1 for insegura
    * (confiança abaixo do limiar ou entrada Out-of-Distribution).
    * Permite delegar transparentemente para um LLM (Groq, Claude, OpenAI) ou regra determinística.

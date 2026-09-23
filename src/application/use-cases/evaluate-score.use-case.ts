@@ -14,7 +14,18 @@ export class EvaluateScoreUseCase {
   public async execute(request: ScoreRequestDto): Promise<ScoreResponseDto> {
     const stateContext = new StateContext(request.state);
 
-    const scaleEntries = Object.entries(request.scale).map(([numStr, desc]) => ({
+    const rawScale: Record<number, string> = {};
+    if (Array.isArray(request.criteria)) {
+      request.criteria.forEach((desc, idx) => {
+        rawScale[idx] = desc;
+      });
+    } else if (request.criteria) {
+      Object.assign(rawScale, request.criteria);
+    } else if (request.scale) {
+      Object.assign(rawScale, request.scale);
+    }
+
+    const scaleEntries = Object.entries(rawScale).map(([numStr, desc]) => ({
       num: Number(numStr),
       id: numStr,
       description: desc,
