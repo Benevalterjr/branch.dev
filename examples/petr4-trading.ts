@@ -35,11 +35,50 @@ const prototypeStore = new InMemoryPrototypeStore();
 // Calibrador com temperatura adequada para distribuições financeiras (evita overconfidence artificial)
 const calibrator = new PlattTemperatureCalibrator(0.85);
 
+import { existsSync, readFileSync } from "node:fs";
+
+// Carregar variáveis de ambiente do arquivo .env automaticamente se presente
+if (existsSync(".env")) {
+  try {
+    const envContent = readFileSync(".env", "utf-8");
+    for (const line of envContent.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (trimmed && !trimmed.startsWith("#")) {
+        const eqIdx = trimmed.indexOf("=");
+        if (eqIdx > 0) {
+          const k = trimmed.slice(0, eqIdx).trim();
+          const v = trimmed.slice(eqIdx + 1).trim().replace(/^['"]|['"]$/g, "");
+          if (!process.env[k]) {
+            process.env[k] = v;
+          }
+        }
+      }
+    }
+  } catch {}
+}
+
+// ─── Configuração do Fallback Sistema 2 via Groq Cloud (Qwen 3.8 27B) ──────────
+
+const GROQ_API_KEY =
+  process.env.GROQ_API_KEY ||
+  process.argv.find((a) => a.startsWith("gsk_")) ||
+  "";
+
+const GROQ_MODEL = process.env.GROQ_MODEL || "qwen/qwen3.8-27b";
+
+interface QwenFallbackResult {
+  choice: "BUY" | "HOLD" | "SELL";
+  confidence: number;
+  justification: string;
+  latencyMs: number;
+}
+
+let lastQwenResult: QwenFallbackResult | null = null;
+
 const useMmBert = process.argv.includes("--mmbert") || process.argv.some((a) => a.toLowerCase().includes("mmbert"));
 const useL12 = process.argv.includes("--l12") || process.argv.some((a) => a.toLowerCase().includes("l12"));
 const useL6 = process.argv.includes("--l6") || process.argv.some((a) => a.toLowerCase().includes("l6"));
 
-import { existsSync } from "node:fs";
 
 const localMmBertPath = "./models/mmbert-small-feature";
 const hasLocalMmBert = existsSync(localMmBertPath);
@@ -263,9 +302,103 @@ async function fetchMarketState(): Promise<MarketState> {
   };
 }
 
+// ─── Fallback Sistema 2: Raciocínio Deliberativo via Qwen 3.8 27B (Groq) ────────
+
+async function callQwenFallback(state: MarketState): Promise<QwenFallbackResult> {
+  if (!GROQ_API_KEY) {
+    return {
+      choice: "HOLD",
+      confidence: 0.75,
+      justification: "Chave Groq não configurada. Fallback determinístico acionado.",
+      latencyMs: 0,
+    };
+  }
+
+  const prompt = `Você é um analista quantitativo sênior atuando como Sistema 2 (deliberação analítica e gestão de risco).
+O Sistema 1 local do Branch.dev detectou incerteza estatística no mercado de PETR4.SA e solicitou sua análise deliberativa.
+
+Diagnóstico Técnico Atual:
+- Preço: R$ ${state.preco.toFixed(2)} (${state.variacaoDia} no dia)
+- Volume: ${state.volume.toLocaleString("pt-BR")} (${state.volumeRelativo} da média histórica) - ${state.volumeStatus}
+- RSI (14 períodos): ${state.rsi14.toFixed(2)} - ${state.rsiStatus}
+- Médias Móveis: SMA(9) = R$ ${state.sma9.toFixed(2)}, SMA(21) = R$ ${state.sma21.toFixed(2)} - ${state.posicaoSMA}
+- Tendência Curta: ${state.tendenciaIntraday.toUpperCase()}
+- Cenário Geral: ${state.diagnosticoTecnico}
+
+Opções Disponíveis:
+- "HOLD": MANTER / NEUTRO (Preservação de Capital — mercado consolidando sem volume ou com sinais mistos)
+- "BUY": COMPRAR (Entrada Altista — rompimento confirmado com volume institucional expressivo acima de resistências)
+- "SELL": VENDER (Saída ou Despejo — perda de médias de suporte com volume pesado ou divergência)
+
+Instrução: Escolha ESTRITAMENTE entre HOLD, BUY ou SELL.
+Em seguida, forneça uma justificativa objetiva de no máximo 1 frase.
+Formato da resposta:
+ESCOLHA: <HOLD | BUY | SELL>
+JUSTIFICATIVA: <frase curta>`;
+
+  const t0 = performance.now();
+  try {
+    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${GROQ_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: GROQ_MODEL,
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.0,
+        max_tokens: 60,
+      }),
+    });
+
+    const t1 = performance.now();
+    const latencyMs = Number((t1 - t0).toFixed(1));
+
+    if (!res.ok) {
+      const err = await res.text();
+      return {
+        choice: "HOLD",
+        confidence: 0.70,
+        justification: `Erro Groq (${res.status}). Mantendo postura neutra de segurança.`,
+        latencyMs,
+      };
+    }
+
+    const data = (await res.json()) as any;
+    const text: string = data.choices?.[0]?.message?.content || "";
+
+    let choice: "BUY" | "HOLD" | "SELL" = "HOLD";
+    if (/\bBUY\b/i.test(text)) choice = "BUY";
+    else if (/\bSELL\b/i.test(text)) choice = "SELL";
+    else choice = "HOLD";
+
+    const justMatch = text.match(/JUSTIFICATIVA:\s*(.*)/i);
+    const justification = justMatch
+      ? justMatch[1].trim()
+      : text.replace(/ESCOLHA:.*?\n/i, "").trim() || "Consolidação e preservação de capital.";
+
+    return {
+      choice,
+      confidence: 0.88,
+      justification,
+      latencyMs,
+    };
+  } catch (err: any) {
+    return {
+      choice: "HOLD",
+      confidence: 0.70,
+      justification: `Falha de rede (${err.message}). Postura defensiva adotada.`,
+      latencyMs: 0,
+    };
+  }
+}
+
 // ─── Execução do Branch SystemOne com Calibração Refinada ──────────────────────
 
 async function runTradingDecision(state: MarketState) {
+  lastQwenResult = null;
+
   const res = await branch.workflow({
     state,
     questions: {
@@ -286,10 +419,12 @@ async function runTradingDecision(state: MarketState) {
             "VENDER (Saída ou Despejo Baixista Confirmado) — Ruptura de suporte com fluxo vendedor pesado: volume de venda expressivo (>1.2x), perda de médias de suporte relevantes, RSI em sobrecompra extrema (>70) ou divergência de topo com perda de momentum.",
         },
         fallback: async (prev) => {
-          // Fallback Sistema 2: Ativado automaticamente quando não há convicção clara no Sistema 1
+          // Fallback Sistema 2: Ativado automaticamente quando a confiança do Sistema 1 for menor que 70%
+          const qwen = await callQwenFallback(state);
+          lastQwenResult = qwen;
           return {
-            choice: "HOLD",
-            confidence: 0.78,
+            choice: qwen.choice,
+            confidence: qwen.confidence,
           };
         },
       },
@@ -364,15 +499,19 @@ function displayResults(state: MarketState, res: Awaited<ReturnType<typeof runTr
   • Cenário Geral:   "${state.diagnosticoTecnico}"
   `);
 
+  const sistemaLabel = acao.delegatedToFallback
+    ? `🌐 SYSTEM2 (Qwen 3.8 27B via Groq Cloud ⚡ ${lastQwenResult?.latencyMs ?? 0} ms)`
+    : "⚡ SYSTEM1 (Inferência Direta Local na CPU)";
+
   console.log("─".repeat(74));
   console.log(`
   🤖 DECISÃO PROBABILÍSTICA BRANCH.DEV (Sistema 1 + Protótipos)
 
   ➤ Ação Recomendada: ${actionEmoji[acao.choice] ?? acao.choice}
      Grau de Certeza:  ${(acao.confidence * 100).toFixed(1)}%
-     Sistema Ativo:    ${acao.system?.toUpperCase() ?? "SYSTEM1"} ${acao.delegatedToFallback ? "(Acionou Fallback por Incerteza)" : "(Inferência Direta Local)"}
+     Sistema Ativo:    ${sistemaLabel}
      Distribuição:     HOLD: ${((acao.probabilities as any)["HOLD"] * 100).toFixed(1)}%  |  BUY: ${((acao.probabilities as any)["BUY"] * 100).toFixed(1)}%  |  SELL: ${((acao.probabilities as any)["SELL"] * 100).toFixed(1)}%
-
+${acao.delegatedToFallback && lastQwenResult ? `     Deliberação LLM:  "${lastQwenResult.justification}"\n` : ""}
   ➤ Intensidade Sinal: [${intensidadeBar}] ${intensidade.score.toFixed(2)} / 3.00
      Distribuição:     ${Object.entries(intensidade.probabilities).map(([k, v]) => `Nível ${k}: ${(v * 100).toFixed(1)}%`).join("  |  ")}
 
@@ -389,8 +528,9 @@ function displayResults(state: MarketState, res: Awaited<ReturnType<typeof runTr
 async function main() {
   console.log("╔════════════════════════════════════════════════════════════════════════╗");
   console.log("║  🏦 Branch.dev × Yahoo Finance — Trading PETR4.SA Calibrado          ║");
-  console.log(`║  Modelo: ${selectedModel.padEnd(60)} ║`);
-  console.log("║  Motor: Sistema 1 + PrototypeStore + Platt Scaling (0.85)             ║");
+  console.log(`║  Modelo S1:   ${selectedModel.padEnd(56)} ║`);
+  console.log(`║  Fallback S2: ${GROQ_MODEL} (Groq Cloud LPU)`.padEnd(73) + "║");
+  console.log("║  Motor:       Sistema 1 + PrototypeStore + Platt Scaling (0.85)        ║");
   console.log("╚════════════════════════════════════════════════════════════════════════╝");
 
 
