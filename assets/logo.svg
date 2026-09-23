@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36" fill="none">
+  <defs>
+    <linearGradient id="branchGrad" x1="8" y1="28" x2="28" y2="8" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#3b82f6" />
+      <stop offset="50%" stop-color="#60a5fa" />
+      <stop offset="100%" stop-color="#c084fc" />
+    </linearGradient>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="36" y2="36" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#1e293b" />
+      <stop offset="100%" stop-color="#0b0f19" />
+    </linearGradient>
+    <filter id="glow" x="18" y="5" width="14" height="14" filterUnits="userSpaceOnUse">
+      <feGaussianBlur stdDeviation="1.5" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+  <!-- Background with subtle border -->
+  <rect width="36" height="36" rx="9" fill="url(#bgGrad)" stroke="#334155" stroke-width="1.2" />
+  
+  <!-- Branch lines: Smart If-Statement / Probabilistic Decision Tree -->
+  <path d="M11 26V18C11 14.6863 13.6863 12 17 12H25" stroke="url(#branchGrad)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+  <path d="M11 18C11 21.3137 13.6863 24 17 24H24" stroke="url(#branchGrad)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" opacity="0.8" />
+  
+  <!-- Probability Nodes -->
+  <circle cx="11" cy="26" r="2.8" fill="#3b82f6" />
+  <!-- Winner Node (Glowing with higher probability) -->
+  <circle cx="25" cy="12" r="3" fill="#c084fc" filter="url(#glow)" />
+  <circle cx="25" cy="12" r="5" stroke="#c084fc" stroke-width="0.8" stroke-dasharray="1.5 1.5" opacity="0.8" />
+  <!-- Secondary Node (Calibrated lower probability) -->
+  <circle cx="24" cy="24" r="2.2" fill="#60a5fa" fill-opacity="0.5" />
+</svg>

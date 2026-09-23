@@ -3,12 +3,38 @@ import { decide, boolean } from "./presentation/index.js";
 
 const PORT = Number(process.env.PORT) || 10000;
 
+const LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36" fill="none" class="brand-logo">
+  <defs>
+    <linearGradient id="branchGrad" x1="8" y1="28" x2="28" y2="8" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#3b82f6" />
+      <stop offset="50%" stop-color="#60a5fa" />
+      <stop offset="100%" stop-color="#c084fc" />
+    </linearGradient>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="36" y2="36" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#1e293b" />
+      <stop offset="100%" stop-color="#0b0f19" />
+    </linearGradient>
+    <filter id="glow" x="18" y="5" width="14" height="14" filterUnits="userSpaceOnUse">
+      <feGaussianBlur stdDeviation="1.5" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+  <rect width="36" height="36" rx="9" fill="url(#bgGrad)" stroke="#334155" stroke-width="1.2" />
+  <path d="M11 26V18C11 14.6863 13.6863 12 17 12H25" stroke="url(#branchGrad)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+  <path d="M11 18C11 21.3137 13.6863 24 17 24H24" stroke="url(#branchGrad)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" opacity="0.8" />
+  <circle cx="11" cy="26" r="2.8" fill="#3b82f6" />
+  <circle cx="25" cy="12" r="3" fill="#c084fc" filter="url(#glow)" />
+  <circle cx="25" cy="12" r="5" stroke="#c084fc" stroke-width="0.8" stroke-dasharray="1.5 1.5" opacity="0.8" />
+  <circle cx="24" cy="24" r="2.2" fill="#60a5fa" fill-opacity="0.5" />
+</svg>`;
+
 const HTML_PAGE = `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>⚡ Branch.dev — Playground</title>
+  <title>Branch.dev — Playground</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
@@ -41,13 +67,28 @@ const HTML_PAGE = `<!DOCTYPE html>
       text-align: center;
       margin-bottom: 2rem;
     }
+    .brand-title-wrap {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.85rem;
+      margin-bottom: 0.5rem;
+    }
+    .brand-title-wrap .brand-logo {
+      width: 44px;
+      height: 44px;
+      border-radius: 11px;
+      box-shadow: 0 4px 15px rgba(59, 130, 246, 0.25);
+      flex-shrink: 0;
+    }
     h1 {
-      font-size: 2.4rem;
+      font-size: 2.3rem;
       font-weight: 700;
       background: linear-gradient(135deg, #60a5fa, #c084fc);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
-      margin-bottom: 0.5rem;
+      margin: 0;
+      letter-spacing: -0.02em;
     }
     p.subtitle {
       color: var(--text-muted);
@@ -221,7 +262,10 @@ const HTML_PAGE = `<!DOCTYPE html>
 <body>
   <div class="container">
     <header>
-      <h1>⚡ Branch.dev</h1>
+      <div class="brand-title-wrap">
+        ${LOGO_SVG}
+        <h1>Branch.dev</h1>
+      </div>
       <p class="subtitle">The Smart If-Statement — Decisões Probabilísticas Tipadas em CPU Pura</p>
       <div class="badges">
         <span class="badge">🚀 100% Local-First</span>
@@ -453,6 +497,16 @@ const server = http.createServer(async (req, res) => {
   }
 
   const url = req.url?.split("?")[0] || "/";
+
+  // Favicon endpoint
+  if (url === "/favicon.svg" || url === "/favicon.ico") {
+    res.writeHead(200, {
+      "Content-Type": "image/svg+xml",
+      "Cache-Control": "public, max-age=86400",
+    });
+    res.end(LOGO_SVG);
+    return;
+  }
 
   // Health check endpoint
   if (url === "/health" || url === "/api/health") {

@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/logo.svg" width="72" height="72" alt="Branch.dev Logo" />
+</p>
+
 # ⚡ Branch.dev (`@branch/core`)
 
 [![CI](https://github.com/Benevalterjr/branch.dev/actions/workflows/ci.yml/badge.svg)](https://github.com/Benevalterjr/branch.dev/actions/workflows/ci.yml)
