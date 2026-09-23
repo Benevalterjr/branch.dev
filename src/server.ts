@@ -270,7 +270,7 @@ const HTML_PAGE = `<!DOCTYPE html>
       <div class="badges">
         <span class="badge">🚀 100% Local-First</span>
         <span class="badge">🔑 Zero Chaves de API</span>
-        <span class="badge">⚡ Sub-segundo em CPU</span>
+        <span class="badge">⚡ Latência em Milissegundos</span>
       </div>
     </header>
 
