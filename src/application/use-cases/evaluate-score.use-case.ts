@@ -71,6 +71,7 @@ export class EvaluateScoreUseCase {
     const baseResponse: ScoreResponseDto = {
       score: scoreDecision.score,
       probabilities: numericProbs,
+      distribution: numericProbs,
       confidence: scoreDecision.confidence,
       actionPolicy: scoreDecision.actionPolicy,
       isOOD: decision.isOOD,

@@ -8,7 +8,7 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
-    "test": "npm run test:cardinality && npm run test:adaptive && npm run test:fallback && npm run test:prototype && npm run test:risk",
+    "test": "npm run test:cardinality && npm run test:adaptive && npm run test:fallback && npm run test:prototype && npm run test:risk && npm run test:sandbox",
     "example:churn": "tsx examples/churn-risk.ts",
     "example:router": "tsx examples/smart-router.ts",
     "example:parity": "tsx examples/typesafe-parity.ts",
@@ -19,6 +19,7 @@
     "test:fallback": "tsx examples/test-fallback-workflow.ts",
     "test:prototype": "tsx examples/test-prototype-store.ts",
     "test:risk": "tsx examples/test-risk-policy.ts",
+    "test:sandbox": "vitest run tests/sandbox-recipes.test.ts",
     "benchmark": "tsx examples/benchmark.ts",
     "trading:petr4": "tsx examples/petr4-trading.ts",
     "benchmark:llm": "tsx examples/benchmark-llm-comparison.ts",
@@ -45,6 +46,7 @@
     "@types/node": "^22.0.0",
     "tsx": "^4.19.0",
     "typescript": "^5.5.0",
+    "vitest": "^4.1.11",
     "yahoo-finance2": "^3.15.4"
   }
 }

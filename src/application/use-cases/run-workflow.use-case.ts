@@ -272,6 +272,7 @@ export class RunWorkflowUseCase {
         let ans: Record<string, unknown> = {
           type: "choice",
           choice: decision.winner,
+          winner: decision.winner,
           probabilities: decision.probabilities,
           confidence: decision.confidence,
           actionPolicy: isBelowConfidence ? "ESCALATE" : decision.actionPolicy,
@@ -285,7 +286,7 @@ export class RunWorkflowUseCase {
         if (item.q.fallback && isUncertain) {
           const fallbackRes = await item.q.fallback(ans as any);
           if (typeof fallbackRes === "string") {
-            ans = { ...ans, choice: fallbackRes, system: "system2", delegatedToFallback: true, actionPolicy: "AUTOMATE" };
+            ans = { ...ans, choice: fallbackRes, winner: fallbackRes, system: "system2", delegatedToFallback: true, actionPolicy: "AUTOMATE" };
           } else if (typeof fallbackRes === "object" && fallbackRes !== null) {
             ans = { ...ans, ...fallbackRes, system: "system2", delegatedToFallback: true, actionPolicy: (fallbackRes as any).actionPolicy ?? "AUTOMATE" };
           }
@@ -306,6 +307,7 @@ export class RunWorkflowUseCase {
     return {
       model: request.model ?? "branch-local-cpu",
       answers: answers as { [K in keyof TQuestions]: InferAnswer<TQuestions[K]> },
+      results: answers as { [K in keyof TQuestions]: InferAnswer<TQuestions[K]> },
       totalLatencyMs,
       system: anySystem2 ? "system2" : "system1",
       usage: {
@@ -413,6 +415,7 @@ export class RunWorkflowUseCase {
           {
             type: "choice",
             choice: res.winner,
+            winner: res.winner,
             probabilities: res.probabilities,
             confidence: res.confidence,
             isOOD: res.isOOD,
@@ -445,6 +448,7 @@ export class RunWorkflowUseCase {
     return {
       model: request.model ?? "branch-local-cpu",
       answers: answers as { [K in keyof TQuestions]: InferAnswer<TQuestions[K]> },
+      results: answers as { [K in keyof TQuestions]: InferAnswer<TQuestions[K]> },
       totalLatencyMs,
       system: anySystem2 ? "system2" : "system1",
       usage: {

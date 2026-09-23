@@ -129,6 +129,8 @@ export type InferAnswer<Q extends WorkflowQuestion> =
     ? {
         type: "choice";
         choice: InferChoice<Q>;
+        /** Alias de conveniência para choice */
+        winner?: InferChoice<Q>;
         probabilities: Record<InferChoice<Q>, number>;
         confidence: number;
         actionPolicy: ActionPolicy;
@@ -161,6 +163,8 @@ export interface WorkflowResponseDto<
 > {
   model?: string;
   answers: { [K in keyof TQuestions]: InferAnswer<TQuestions[K]> };
+  /** Alias de conveniência para answers */
+  results?: { [K in keyof TQuestions]: InferAnswer<TQuestions[K]> };
   totalLatencyMs: number;
   /** Indica se todas as perguntas foram Sistema 1 ou se alguma recorreu a fallback (Sistema 2) */
   system?: "system1" | "system2";

@@ -779,8 +779,8 @@ const HTML_PAGE = `<!DOCTYPE html>
             chamadosAbertos: 4
           },
           question: "O cliente está demonstrando risco iminente de cancelamento (churn)?",
-          affirmativeDescription: "SIM — ameaça de cancelamento explícita, insatisfação crítica e atrito",
-          negativeDescription: "NÃO — dúvida rotineira sem ameaça de cancelamento"
+          affirmativeDescription: "SIM — cliente insatisfeito com problemas e ameaçando cancelar o contrato",
+          negativeDescription: "NÃO — cliente com dúvida comum de atendimento ou suporte regular"
         }
       },
       workflow: {
@@ -798,14 +798,16 @@ const HTML_PAGE = `<!DOCTYPE html>
               type: "choice",
               instructions: "Qual time de plantão acionar?",
               choices: {
-                plantao_infra: "Servidores fora do ar, banco indisponível e infraestrutura crítica",
-                suporte_nivel1: "Dúvidas de uso, cadastro e senhas",
-                financeiro: "Boletos e faturamento hospitalar"
+                plantao_infra: "Servidores fora do ar, sistema fora do ar, erro 504 e infraestrutura crítica de TI",
+                suporte_nivel1: "Dúvidas de uso do sistema, senhas e cadastro",
+                financeiro: "Boletos, notas fiscais, faturas e pagamentos"
               }
             },
             quedaCritica: {
               type: "boolean",
-              instructions: "Trata-se de um incidente crítico com interrupção de operação essencial?"
+              instructions: "Trata-se de um incidente crítico com interrupção de operação essencial?",
+              affirmativeDescription: "SIM — incidente crítico com sistema hospitalar fora do ar e pronto-socorro afetado",
+              negativeDescription: "NÃO — dúvida ou operação normal sem interrupção de serviço"
             },
             severidade: {
               type: "score",

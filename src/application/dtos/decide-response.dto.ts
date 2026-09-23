@@ -11,6 +11,8 @@ export interface DecideResponseDto<T extends string = string> {
   confidence: number;
   /** Semáforo operacional de decisão: "AUTOMATE" | "VERIFY" | "ESCALATE" */
   actionPolicy: ActionPolicy;
+  /** Indica se a opção vencedora ficou abaixo do limiar de confiança individual ou global requerido. */
+  isBelowConfidence?: boolean;
   /** Indica se a entrada é Out-of-Distribution (fora do escopo semântico das opções). */
   isOOD: boolean;
   /** Entropia de Shannon da distribuição: H(P) = -sum( p_i * log2(p_i) ). */

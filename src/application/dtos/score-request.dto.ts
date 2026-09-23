@@ -62,6 +62,8 @@ export interface ScoreResponseDto {
   score: number;
   /** Distribuição de probabilidades em cada ponto da escala */
   probabilities: Record<number, number>;
+  /** Alias para probabilities */
+  distribution?: Record<number, number>;
   /** Grau de confiança na categoria de maior probabilidade */
   confidence: number;
   /** Semáforo operacional de decisão: "AUTOMATE" | "VERIFY" | "ESCALATE" */

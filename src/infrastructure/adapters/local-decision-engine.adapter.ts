@@ -68,6 +68,11 @@ export class LocalDecisionEngine implements IDecisionEngine {
     // 2. Extrai embeddings das opções de decisão (armazenadas em cache persistente em memória)
     const choiceIds = params.candidates.map((c) => c.id);
     const candidateTexts = params.candidates.map((c) => {
+      // Para escolhas booleanas primitivas ("true" | "false"), a descrição já contém a semântica direta (ex: "SIM...", "NÃO...")
+      // e não deve ser poluída com identificadores em inglês ("true:", "false:") nem com a repetição da pergunta inteira.
+      if (c.id === "true" || c.id === "false") {
+        return c.description;
+      }
       const label = c.id !== c.description ? `${c.id}: ${c.description}` : c.description;
       return params.taskDescription ? `${params.taskDescription} -> ${label}` : label;
     });
@@ -135,6 +140,9 @@ export class LocalDecisionEngine implements IDecisionEngine {
 
       const choiceIds = params.candidates.map((c) => c.id);
       const candidateTexts = params.candidates.map((c) => {
+        if (c.id === "true" || c.id === "false") {
+          return c.description;
+        }
         const label = c.id !== c.description ? `${c.id}: ${c.description}` : c.description;
         return params.taskDescription ? `${params.taskDescription} -> ${label}` : label;
       });

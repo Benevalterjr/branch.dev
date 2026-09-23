@@ -49,6 +49,7 @@ export class MakeDecisionUseCase {
       winner: decision.winner,
       confidence: decision.confidence,
       actionPolicy: isBelowConfidence ? "ESCALATE" : decision.actionPolicy,
+      isBelowConfidence,
       isOOD: decision.isOOD,
       entropy: decision.entropy,
       normalizedEntropy: decision.normalizedEntropy,
