@@ -453,12 +453,21 @@ async function runTradingDecision(state: MarketState) {
           "Com base no estado técnico atual (volume, RSI, médias móveis e tendência), " +
           "qual é a postura correta de alocação de risco?",
         choices: {
-          HOLD:
-            "MANTER / NEUTRO (Preservação de Capital) — Mercado sem fluxo institucional expressivo: volume baixo (<0.6x do médio), RSI em zona neutra (40-60), sinais conflitantes entre prazos ou consolidação entre médias móveis. A melhor conduta quantitativa é ficar de fora e aguardar confirmação com volume.",
-          BUY:
-            "COMPRAR (Entrada Altista Confirmada) — Rompimento claro com fluxo comprador agressivo: volume institucional acima da média (>1.2x), preço rompendo consistentemente acima das médias de resistência, RSI com expansão altista e tendência confirmada.",
-          SELL:
-            "VENDER (Saída ou Despejo Baixista Confirmado) — Ruptura de suporte com fluxo vendedor pesado: volume de venda expressivo (>1.2x), perda de médias de suporte relevantes, RSI em sobrecompra extrema (>70) ou divergência de topo com perda de momentum.",
+          HOLD: {
+            description:
+              "MANTER / NEUTRO (Preservação de Capital) — Mercado sem fluxo institucional expressivo: volume baixo (<0.6x do médio), RSI em zona neutra (40-60), sinais conflitantes entre prazos ou consolidação entre médias móveis. A melhor conduta quantitativa é ficar de fora e aguardar confirmação com volume.",
+            minConfidence: 0.50, // Baixo risco de capital: 50% de confiança já autoriza a prudência
+          },
+          BUY: {
+            description:
+              "COMPRAR (Entrada Altista Confirmada) — Rompimento claro com fluxo comprador agressivo: volume institucional acima da média (>1.2x), preço rompendo consistentemente acima das médias de resistência, RSI com expansão altista e tendência confirmada.",
+            minConfidence: 0.85, // Alto risco: alocação de capital real exige convicção de pelo menos 85%
+          },
+          SELL: {
+            description:
+              "VENDER (Saída ou Despejo Baixista Confirmado) — Ruptura de suporte com fluxo vendedor pesado: volume de venda expressivo (>1.2x), perda de médias de suporte relevantes, RSI em sobrecompra extrema (>70) ou divergência de topo com perda de momentum.",
+            minConfidence: 0.75, // Risco moderado: proteção de posição exige convicção de pelo menos 75%
+          },
         },
         fallback: async (prev) => {
           // Fallback Sistema 2: Ativado automaticamente quando a confiança do Sistema 1 for menor que 70%
@@ -519,6 +528,26 @@ function displayResults(state: MarketState, res: Awaited<ReturnType<typeof runTr
     SELL: "🔴 VENDER",
   };
 
+  const policyMeta: Record<string, { badge: string; desc: string }> = {
+    AUTOMATE: {
+      badge: "🟢 AUTOMATE",
+      desc: "Execução Autônoma Autorizada (Envio Direto ao Broker via API)",
+    },
+    VERIFY: {
+      badge: "🟡 VERIFY",
+      desc: "Confirmação Obrigatória na Boleta (Exige Aval do Trader)",
+    },
+    ESCALATE: {
+      badge: "🔴 ESCALATE",
+      desc: "Intervenção Manual / Suspensão Operacional (Incerteza Crítica ou Fora de Padrão)",
+    },
+  };
+
+  const acaoPolicy = policyMeta[acao.actionPolicy] ?? {
+    badge: acao.actionPolicy,
+    desc: "Política não especificada",
+  };
+
   const intensidadeBar = "█".repeat(Math.round(intensidade.score)) + "░".repeat(3 - Math.round(intensidade.score));
 
   console.log("\n" + "═".repeat(74));
@@ -547,17 +576,18 @@ function displayResults(state: MarketState, res: Awaited<ReturnType<typeof runTr
 
   console.log("─".repeat(74));
   console.log(`
-  🤖 DECISÃO PROBABILÍSTICA BRANCH.DEV (Sistema 1 + Protótipos)
+  🤖 DECISÃO PROBABILÍSTICA BRANCH.DEV (Sistema 1 + Protótipos + Governança de Risco)
 
   ➤ Ação Recomendada: ${actionEmoji[acao.choice] ?? acao.choice}
      Grau de Certeza:  ${(acao.confidence * 100).toFixed(1)}%
+     Semáforo Risco:   ${acaoPolicy.badge} ── ${acaoPolicy.desc}
      Sistema Ativo:    ${sistemaLabel}
      Distribuição:     HOLD: ${((acao.probabilities as any)["HOLD"] * 100).toFixed(1)}%  |  BUY: ${((acao.probabilities as any)["BUY"] * 100).toFixed(1)}%  |  SELL: ${((acao.probabilities as any)["SELL"] * 100).toFixed(1)}%
 ${acao.delegatedToFallback && lastQwenResult ? `     Deliberação LLM:  "${lastQwenResult.justification}"\n` : ""}
-  ➤ Intensidade Sinal: [${intensidadeBar}] ${intensidade.score.toFixed(2)} / 3.00
+  ➤ Intensidade Sinal: [${intensidadeBar}] ${intensidade.score.toFixed(2)} / 3.00 (Política: ${intensidade.actionPolicy})
      Distribuição:     ${Object.entries(intensidade.probabilities).map(([k, v]) => `Nível ${k}: ${(v * 100).toFixed(1)}%`).join("  |  ")}
 
-  ➤ Risco de Armadilha: ${risco.value ? "⚠️  ALTO (Falso rompimento sem volume)" : "✅ BAIXO (Movimento consistente)"}
+  ➤ Risco de Armadilha: ${risco.value ? "⚠️  ALTO (Falso rompimento sem volume)" : "✅ BAIXO (Movimento consistente)"} (Política: ${risco.actionPolicy})
      Probabilidade:    ${(risco.probability * 100).toFixed(1)}%
 
   ⏱️ Latência Total de Inferência (CPU Local): ${res.totalLatencyMs.toFixed(1)} ms
