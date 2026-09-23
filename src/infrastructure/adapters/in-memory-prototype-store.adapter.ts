@@ -24,28 +24,39 @@ export class InMemoryPrototypeStore implements IPrototypeStore {
   }
 
   public async addExample(choice: string, embedding: Float32Array): Promise<void> {
+    if (!embedding || embedding.length === 0) {
+      throw new Error("[Branch.dev PrototypeStore] Embedding inválido ou vazio fornecido para addExample.");
+    }
+
     if (!this.examples.has(choice)) {
       this.examples.set(choice, []);
     }
     const list = this.examples.get(choice)!;
 
-    // Garante que o vetor adicionado está normalizado em L2
-    const normalized = this.normalizeL2(new Float32Array(embedding));
+    // 1. Validação estrita de dimensionalidade: impede misturar embeddings com dimensões conflitantes
+    if (list.length > 0 && list[0].length !== embedding.length) {
+      throw new Error(
+        `[Branch.dev PrototypeStore] Divergência de dimensionalidade para '${choice}': esperado ${list[0].length} dimensões, recebido ${embedding.length}.`
+      );
+    }
+
+    // 2. Garante que o vetor adicionado está normalizado em L2 e é uma cópia defensiva imutável
+    const normalized = this.normalizeL2(embedding);
     list.push(normalized);
 
-    // Buffer circular limitado para evitar consumo descontrolado de RAM
+    // 3. Buffer circular limitado para evitar consumo descontrolado de RAM
     if (list.length > this.maxExamplesPerChoice) {
       list.shift();
     }
 
-    // Invalida cache de protótipo para esta escolha
+    // 4. Invalida cache de protótipo para esta escolha
     this.cachedPrototypes.delete(choice);
   }
 
   public async getPrototype(choice: string): Promise<Float32Array | null> {
     const cached = this.cachedPrototypes.get(choice);
     if (cached) {
-      return new Float32Array(cached);
+      return new Float32Array(cached); // Cópia defensiva
     }
 
     const list = this.examples.get(choice);
@@ -56,23 +67,26 @@ export class InMemoryPrototypeStore implements IPrototypeStore {
     const dim = list[0].length;
     const centroid = new Float32Array(dim);
 
-    // Soma vetorial elemento a elemento
+    // Soma vetorial elemento a elemento com validação de segurança
     for (const emb of list) {
+      if (emb.length !== dim) {
+        continue;
+      }
       for (let i = 0; i < dim; i++) {
         centroid[i] += emb[i];
       }
     }
 
-    // Média
+    // Média do centróide
     const count = list.length;
     for (let i = 0; i < dim; i++) {
       centroid[i] /= count;
     }
 
-    // Normalização L2 do centróide
+    // Normalização L2 do centróide (gera cópia limpa)
     const normalizedCentroid = this.normalizeL2(centroid);
     this.cachedPrototypes.set(choice, normalizedCentroid);
-    return normalizedCentroid;
+    return new Float32Array(normalizedCentroid);
   }
 
   public async getEnhancedEmbedding(
@@ -82,13 +96,13 @@ export class InMemoryPrototypeStore implements IPrototypeStore {
   ): Promise<Float32Array> {
     const prototype = await this.getPrototype(choice);
     if (!prototype) {
-      return originalEmbedding;
+      return new Float32Array(originalEmbedding);
     }
 
     const dim = originalEmbedding.length;
     if (prototype.length !== dim) {
-      // Caso haja divergência de dimensões entre modelos, preserva original com segurança
-      return originalEmbedding;
+      // Divergência de dimensões entre modelos: preserva original com segurança
+      return new Float32Array(originalEmbedding);
     }
 
     const effectiveAlpha = Math.min(1.0, Math.max(0.0, alpha));
@@ -117,17 +131,23 @@ export class InMemoryPrototypeStore implements IPrototypeStore {
   }
 
   /**
-   * Normalização L2 pura (in-place)
+   * Normalização L2 pura e segura (não muta o vetor original de entrada)
+   * Trata vetores nulos ou com componentes inválidos (evita NaN e divisão por zero).
    */
   private normalizeL2(vec: Float32Array): Float32Array {
     let sumSq = 0;
     for (let i = 0; i < vec.length; i++) {
       sumSq += vec[i] * vec[i];
     }
-    const norm = Math.sqrt(sumSq) || 1.0;
-    for (let i = 0; i < vec.length; i++) {
-      vec[i] /= norm;
+    const norm = Math.sqrt(sumSq);
+    if (norm === 0 || !Number.isFinite(norm)) {
+      return new Float32Array(vec.length);
     }
-    return vec;
+
+    const out = new Float32Array(vec.length);
+    for (let i = 0; i < vec.length; i++) {
+      out[i] = vec[i] / norm;
+    }
+    return out;
   }
 }
