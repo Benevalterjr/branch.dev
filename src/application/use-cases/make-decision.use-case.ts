@@ -48,7 +48,7 @@ export class MakeDecisionUseCase {
     const baseResponse: DecideResponseDto<T> = {
       winner: decision.winner,
       confidence: decision.confidence,
-      actionPolicy: decision.actionPolicy,
+      actionPolicy: isBelowConfidence ? "ESCALATE" : decision.actionPolicy,
       isOOD: decision.isOOD,
       entropy: decision.entropy,
       normalizedEntropy: decision.normalizedEntropy,
