@@ -103,6 +103,12 @@ export async function systemOne<
   return ensureClient().systemOne<TQuestions>(state, questions, options);
 }
 
+/**
+ * Pré-aquece o modelo de inferência em background para eliminar a latência de cold start.
+ */
+export async function warmup(): Promise<void> {
+  return ensureClient().warmup();
+}
 
 export { BranchClient, BranchClientConfig } from "./branch-client.js";
 export { BRANCH_EMBEDDING_MODELS, SupportedEmbeddingModel };

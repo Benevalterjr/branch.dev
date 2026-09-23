@@ -6,6 +6,7 @@ import {
   score,
   workflow,
   systemOne,
+  warmup,
   BRANCH_EMBEDDING_MODELS,
 } from "./presentation/index.js";
 
@@ -1190,4 +1191,12 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`⚡ Branch.dev server listening on port ${PORT}`);
+  console.log(`⏳ Aquecendo motor de inferência em background (pre-warming)...`);
+  warmup()
+    .then(() => {
+      console.log(`🔥 [Branch.dev] Modelo ONNX aquecido e carregado na RAM! Pronto para inferência ultra-rápida.`);
+    })
+    .catch((err) => {
+      console.warn(`[Branch.dev] Aviso no pre-warming:`, err?.message || err);
+    });
 });
