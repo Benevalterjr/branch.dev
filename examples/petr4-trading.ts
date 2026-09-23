@@ -28,12 +28,9 @@ process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 
 const yahooFinance = new (YahooFinance as any)({ suppressNotices: ["yahooSurvey"] });
 
-// ─── Cliente Branch com PrototypeStore e Calibrador Otimizado ──────────────────
+// ─── Cliente Branch com PrototypeStore ────────────────────────────────────────
 
 const prototypeStore = new InMemoryPrototypeStore();
-
-// Calibrador com temperatura adequada para distribuições financeiras (evita overconfidence artificial)
-const calibrator = new PlattTemperatureCalibrator(0.85);
 
 import { existsSync, readFileSync } from "node:fs";
 
@@ -95,7 +92,6 @@ const selectedModel = useMmBert
 
 const branch = new BranchClient({
   modelName: selectedModel,
-  calibrator,
   prototypeStore,
 });
 
@@ -441,14 +437,21 @@ JUSTIFICATIVA: <frase curta>`;
 async function runTradingDecision(state: MarketState) {
   lastQwenResult = null;
 
+  // Extrai o estado semântico e qualitativo para o Sistema 1 (evita poluição de ruído numérico no embedding)
+  const technicalState = {
+    diagnosticoTecnico: state.diagnosticoTecnico,
+    volumeStatus: state.volumeStatus,
+    rsiStatus: state.rsiStatus,
+    posicaoSMA: state.posicaoSMA,
+    tendenciaIntraday: state.tendenciaIntraday,
+  };
+
   const res = await branch.workflow({
-    state,
+    state: technicalState,
     questions: {
       // Pergunta 1: Ação recomendada (com escolhas balanceadas e gravidade no HOLD)
       acao: {
         type: "choice" as const,
-        temperature: 0.85, // Temperatura calibrada para evitar colapso artificial
-        confidenceThreshold: 0.70, // Metacognição: se incerteza > 30%, aciona fallback Sistema 2
         instructions:
           "Com base no estado técnico atual (volume, RSI, médias móveis e tendência), " +
           "qual é a postura correta de alocação de risco?",
@@ -456,7 +459,7 @@ async function runTradingDecision(state: MarketState) {
           HOLD: {
             description:
               "MANTER / NEUTRO (Preservação de Capital) — Mercado sem fluxo institucional expressivo: volume baixo (<0.6x do médio), RSI em zona neutra (40-60), sinais conflitantes entre prazos ou consolidação entre médias móveis. A melhor conduta quantitativa é ficar de fora e aguardar confirmação com volume.",
-            minConfidence: 0.50, // Baixo risco de capital: 50% de confiança já autoriza a prudência
+            minConfidence: 0.40, // Baixo risco de capital: 40% já autoriza a prudência estatística sobre 33%
           },
           BUY: {
             description:
@@ -470,7 +473,7 @@ async function runTradingDecision(state: MarketState) {
           },
         },
         fallback: async (prev) => {
-          // Fallback Sistema 2: Ativado automaticamente quando a confiança do Sistema 1 for menor que 70%
+          // Fallback Sistema 2: Ativado somente em caso de dúvida real ou violação de risco
           const qwen = await callQwenFallback(state);
           lastQwenResult = qwen;
           return {
@@ -483,7 +486,6 @@ async function runTradingDecision(state: MarketState) {
       // Pergunta 2: Intensidade do sinal (score ordinal calibrado)
       intensidade: {
         type: "score" as const,
-        temperature: 0.80,
         instructions:
           "Qual a intensidade e clareza do sinal direcional no ativo? " +
           "Considere a confirmação de volume relativo e alinhamento dos indicadores.",
@@ -498,7 +500,6 @@ async function runTradingDecision(state: MarketState) {
       // Pergunta 3: Risco de armadilha / reversão falsa
       riscoArmadilha: {
         type: "boolean" as const,
-        temperature: 0.75,
         instructions:
           "O movimento atual apresenta risco de falso rompimento ou armadilha por falta de volume?",
         affirmativeDescription:

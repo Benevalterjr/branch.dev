@@ -170,7 +170,10 @@ export class RunWorkflowUseCase {
 
         const isBelowConfidence =
           effectiveThreshold !== undefined && booleanDecision.confidence < effectiveThreshold;
-        const isUncertain = booleanDecision.isOOD || isBelowConfidence;
+        const isUncertain =
+          booleanDecision.isOOD ||
+          isBelowConfidence ||
+          (effectiveThreshold === undefined && booleanDecision.actionPolicy === "ESCALATE");
 
         let ans: Record<string, unknown> = {
           type: item.type,
@@ -220,7 +223,10 @@ export class RunWorkflowUseCase {
 
         const isBelowConfidence =
           effectiveThreshold !== undefined && scoreDecision.confidence < effectiveThreshold;
-        const isUncertain = decision.isOOD || isBelowConfidence;
+        const isUncertain =
+          decision.isOOD ||
+          isBelowConfidence ||
+          (effectiveThreshold === undefined && scoreDecision.actionPolicy === "ESCALATE");
 
         let ans: Record<string, unknown> = {
           type: "score",
@@ -258,7 +264,10 @@ export class RunWorkflowUseCase {
           candidateThreshold ?? item.q.confidenceThreshold ?? item.q.minConfidence ?? request.confidenceThreshold;
         const isBelowConfidence =
           effectiveChoiceThreshold !== undefined && decision.confidence < effectiveChoiceThreshold;
-        const isUncertain = decision.isOOD || isBelowConfidence;
+        const isUncertain =
+          decision.isOOD ||
+          isBelowConfidence ||
+          (effectiveChoiceThreshold === undefined && decision.actionPolicy === "ESCALATE");
 
         let ans: Record<string, unknown> = {
           type: "choice",

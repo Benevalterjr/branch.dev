@@ -44,8 +44,28 @@ export class Decision<T extends string = string> {
     this.latencyMs = latencyMs;
     this.timestampMs = timestampMs;
 
-    const automateThreshold = actionPolicyThresholds?.automate ?? 0.80;
-    const verifyThreshold = actionPolicyThresholds?.verify ?? 0.50;
+    const keys = Object.keys(distribution.toRecord());
+    const k = keys.length || 2;
+
+    let defaultAutomate = 0.80;
+    let defaultVerify = 0.50;
+
+    if (k <= 2) {
+      defaultAutomate = 0.80;
+      defaultVerify = 0.50;
+    } else if (k <= 5) {
+      defaultAutomate = 0.70;
+      defaultVerify = 0.42;
+    } else if (k <= 10) {
+      defaultAutomate = 0.58;
+      defaultVerify = 0.28;
+    } else {
+      defaultAutomate = 0.45;
+      defaultVerify = 0.18;
+    }
+
+    const automateThreshold = actionPolicyThresholds?.automate ?? defaultAutomate;
+    const verifyThreshold = actionPolicyThresholds?.verify ?? defaultVerify;
     if (this.isOOD) {
       this.actionPolicy = "ESCALATE";
     } else if (this.confidence >= automateThreshold) {

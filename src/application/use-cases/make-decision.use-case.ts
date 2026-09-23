@@ -39,7 +39,10 @@ export class MakeDecisionUseCase {
       candidateThreshold ?? request.confidenceThreshold ?? request.minConfidence;
     const isBelowConfidence =
       effectiveThreshold !== undefined && decision.confidence < effectiveThreshold;
-    const isUncertain = decision.isOOD || isBelowConfidence;
+    const isUncertain =
+      decision.isOOD ||
+      isBelowConfidence ||
+      (effectiveThreshold === undefined && decision.actionPolicy === "ESCALATE");
 
     const baseResponse: DecideResponseDto<T> = {
       winner: decision.winner,
