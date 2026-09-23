@@ -1028,6 +1028,21 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Documentação docs/examples.md
+  if ((url === "/docs/examples.md" || url === "/docs") && req.method === "GET") {
+    try {
+      const { existsSync, readFileSync } = await import("node:fs");
+      const { resolve } = await import("node:path");
+      const docPath = resolve(process.cwd(), "docs/examples.md");
+      if (existsSync(docPath)) {
+        const content = readFileSync(docPath, "utf-8");
+        res.writeHead(200, { "Content-Type": "text/markdown; charset=utf-8" });
+        res.end(content);
+        return;
+      }
+    } catch {}
+  }
+
   // API POST /api/decide
   if (url === "/api/decide" && req.method === "POST") {
     let body = "";
