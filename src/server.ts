@@ -13,6 +13,11 @@ import {
 // Ativar modelo multilíngue por padrão para suporte nativo e preciso a Português e Inglês
 configure({ modelName: BRANCH_EMBEDDING_MODELS.MULTILINGUAL_BALANCED });
 
+let engineReady = false;
+let engineLoading = true;
+let engineError: string | null = null;
+let warmupDurationMs = 0;
+
 const PORT = Number(process.env.PORT) || 10000;
 
 const LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36" fill="none" class="brand-logo">
@@ -124,6 +129,61 @@ const HTML_PAGE = `<!DOCTYPE html>
       background: rgba(59, 130, 246, 0.15);
       border: 1px solid rgba(59, 130, 246, 0.4);
       color: #93c5fd;
+    }
+
+    /* ─── Barra de Status do Modelo (Cold-Start / Ready) ─── */
+    .model-status-bar {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.65rem;
+      margin: 1.15rem auto 0 auto;
+      max-width: 720px;
+      padding: 0.65rem 1.15rem;
+      border-radius: 10px;
+      font-size: 0.85rem;
+      line-height: 1.45;
+      transition: all 0.3s ease-in-out;
+      text-align: left;
+    }
+    .model-status-bar.loading {
+      background: rgba(245, 158, 11, 0.12);
+      border: 1px solid rgba(245, 158, 11, 0.4);
+      color: #fbbf24;
+    }
+    .model-status-bar.ready {
+      background: rgba(16, 185, 129, 0.12);
+      border: 1px solid rgba(16, 185, 129, 0.4);
+      color: #6ee7b7;
+    }
+    .model-status-bar.error {
+      background: rgba(239, 68, 68, 0.12);
+      border: 1px solid rgba(239, 68, 68, 0.4);
+      color: #fca5a5;
+    }
+    .status-indicator-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      background: #f59e0b;
+    }
+    .status-indicator-dot.pulse {
+      animation: pulseDot 1.4s infinite ease-in-out;
+    }
+    .status-indicator-dot.ready {
+      background: #10b981;
+      box-shadow: 0 0 10px rgba(16, 185, 129, 0.85);
+      animation: none;
+    }
+    .status-indicator-dot.error {
+      background: #ef4444;
+      animation: none;
+    }
+    @keyframes pulseDot {
+      0% { transform: scale(0.85); opacity: 0.5; box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.7); }
+      70% { transform: scale(1.15); opacity: 1; box-shadow: 0 0 0 8px rgba(245, 158, 11, 0); }
+      100% { transform: scale(0.85); opacity: 0.5; box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
     }
 
     /* ─── Navegação por Abas (Tabs) ─── */
@@ -421,6 +481,14 @@ const HTML_PAGE = `<!DOCTYPE html>
         <span class="badge">⚡ Latência em Milissegundos</span>
         <span class="badge">🚦 Semáforo Operacional</span>
       </div>
+
+      <!-- Barra de Status Dinâmico do Modelo Neural (Cold-Start / Ready) -->
+      <div id="modelStatusBar" class="model-status-bar loading">
+        <span class="status-indicator-dot pulse"></span>
+        <span id="modelStatusText">
+          <strong>Carregando Modelo Neural ONNX (~118MB)...</strong> Primeira inicialização em andamento (download e alocação na RAM).
+        </span>
+      </div>
     </header>
 
     <!-- Navegação por Abas -->
@@ -556,6 +624,47 @@ const HTML_PAGE = `<!DOCTYPE html>
   </div>
 
   <script>
+    let isEngineReady = false;
+
+    async function checkEngineStatus() {
+      try {
+        const resp = await fetch('/api/status');
+        if (!resp.ok) return;
+        const data = await resp.json();
+        const bar = document.getElementById('modelStatusBar');
+        const dot = bar ? bar.querySelector('.status-indicator-dot') : null;
+        const text = document.getElementById('modelStatusText');
+
+        if (data.status === 'ready') {
+          isEngineReady = true;
+          if (bar) bar.className = 'model-status-bar ready';
+          if (dot) dot.className = 'status-indicator-dot ready';
+          if (text) {
+            var timeInfo = data.warmupDurationMs ? ' (aquecido em ' + (data.warmupDurationMs / 1000).toFixed(1) + 's)' : '';
+            text.innerHTML = '<strong>Motor Neural ONNX Pronto na RAM</strong> &bull; Xenova/paraphrase-multilingual-MiniLM-L12-v2 &bull; Latência esperada ~10-25ms' + timeInfo;
+          }
+        } else if (data.status === 'loading') {
+          isEngineReady = false;
+          if (bar) bar.className = 'model-status-bar loading';
+          if (dot) dot.className = 'status-indicator-dot pulse';
+          if (text) {
+            text.innerHTML = '<strong>Carregando Modelo Neural ONNX (~118MB)...</strong> Primeira inicialização em andamento (download e alocação na RAM).';
+          }
+          setTimeout(checkEngineStatus, 1500);
+        } else if (data.status === 'error') {
+          if (bar) bar.className = 'model-status-bar error';
+          if (dot) dot.className = 'status-indicator-dot error';
+          if (text) {
+            text.innerHTML = '<strong>Aviso no Carregamento:</strong> ' + (data.error || 'Operando com motor semântico de fallback');
+          }
+        }
+      } catch (err) {
+        setTimeout(checkEngineStatus, 2000);
+      }
+    }
+
+    checkEngineStatus();
+
     // ─── Controle de Abas ───
     function switchTab(tab) {
       document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -673,7 +782,9 @@ const HTML_PAGE = `<!DOCTYPE html>
       }
 
       btn.disabled = true;
-      btn.innerText = "⏳ Processando na CPU local...";
+      btn.innerText = !isEngineReady
+        ? "⏳ Inicializando rede neural ONNX (~118MB)..."
+        : "⏳ Processando na CPU local...";
 
       try {
         const resp = await fetch('/api/decide', {
@@ -686,6 +797,11 @@ const HTML_PAGE = `<!DOCTYPE html>
         if (data.error) {
           alert("Erro: " + data.error);
           return;
+        }
+
+        if (!isEngineReady) {
+          isEngineReady = true;
+          checkEngineStatus();
         }
 
         document.getElementById('resWinner').innerText = data.winner;
@@ -899,7 +1015,9 @@ const HTML_PAGE = `<!DOCTYPE html>
       }
 
       btn.disabled = true;
-      btn.innerText = "⏳ Executando inferência local na CPU...";
+      btn.innerText = !isEngineReady
+        ? "⏳ Inicializando rede neural ONNX (~118MB)..."
+        : "⏳ Executando inferência local na CPU...";
 
       try {
         const resp = await fetch(rec.endpoint, {
@@ -912,6 +1030,11 @@ const HTML_PAGE = `<!DOCTYPE html>
         if (data.error) {
           alert("Erro retornado pelo motor: " + data.error);
           return;
+        }
+
+        if (!isEngineReady) {
+          isEngineReady = true;
+          checkEngineStatus();
         }
 
         // Renderização adaptada por tipo de resposta
@@ -1024,6 +1147,22 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Status do Motor Neural (Cold-Start e Pre-Warming)
+  if (url === "/api/status" || url === "/status") {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(
+      JSON.stringify({
+        status: engineReady ? "ready" : engineLoading ? "loading" : "error",
+        engineReady,
+        modelName: BRANCH_EMBEDDING_MODELS.MULTILINGUAL_BALANCED,
+        warmupDurationMs: warmupDurationMs ? Math.round(warmupDurationMs) : null,
+        device: "CPU (ONNX Runtime Local)",
+        error: engineError,
+      })
+    );
+    return;
+  }
+
   // Página web interativa (Playground + Sandbox)
   if (url === "/" && req.method === "GET") {
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
@@ -1072,6 +1211,8 @@ const server = http.createServer(async (req, res) => {
           oodThreshold: payload.oodThreshold,
         });
 
+        engineReady = true;
+        engineLoading = false;
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify(result));
       } catch (err: any) {
@@ -1107,6 +1248,8 @@ const server = http.createServer(async (req, res) => {
           temperature: payload.temperature,
         });
 
+        engineReady = true;
+        engineLoading = false;
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify(result));
       } catch (err: any) {
@@ -1142,6 +1285,8 @@ const server = http.createServer(async (req, res) => {
           temperature: payload.temperature,
         });
 
+        engineReady = true;
+        engineLoading = false;
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify(result));
       } catch (err: any) {
@@ -1175,6 +1320,8 @@ const server = http.createServer(async (req, res) => {
           confidenceThreshold: payload.confidenceThreshold,
         });
 
+        engineReady = true;
+        engineLoading = false;
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify(result));
       } catch (err: any) {
@@ -1192,11 +1339,17 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`⚡ Branch.dev server listening on port ${PORT}`);
   console.log(`⏳ Aquecendo motor de inferência em background (pre-warming)...`);
+  const start = performance.now();
   warmup()
     .then(() => {
-      console.log(`🔥 [Branch.dev] Modelo ONNX aquecido e carregado na RAM! Pronto para inferência ultra-rápida.`);
+      engineReady = true;
+      engineLoading = false;
+      warmupDurationMs = performance.now() - start;
+      console.log(`🔥 [Branch.dev] Modelo ONNX aquecido em ${warmupDurationMs.toFixed(0)}ms e carregado na RAM! Pronto para inferência ultra-rápida.`);
     })
     .catch((err) => {
-      console.warn(`[Branch.dev] Aviso no pre-warming:`, err?.message || err);
+      engineLoading = false;
+      engineError = err?.message || String(err);
+      console.warn(`[Branch.dev] Aviso no pre-warming:`, engineError);
     });
 });
