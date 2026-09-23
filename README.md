@@ -8,8 +8,6 @@
 > **The Smart If-Statement for Modern Code.**  
 > Decisões probabilísticas tipadas, calibradas e auditáveis em **CPU pura**, sem geração de texto, sem chamadas autoregressivas e sem chaves de API.
 
-Um concorrente de código aberto, local-first e centrado em Clean Architecture para o **TypeSafe / System One / Jev**.
-
 ---
 
 ## 🎯 Por que o Branch.dev?
