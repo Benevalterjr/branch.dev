@@ -1,5 +1,8 @@
 import * as http from "node:http";
-import { decide, boolean } from "./presentation/index.js";
+import { configure, decide, boolean, BRANCH_EMBEDDING_MODELS } from "./presentation/index.js";
+
+// Ativar modelo multilíngue por padrão para suporte nativo e preciso a Português e Inglês
+configure({ modelName: BRANCH_EMBEDDING_MODELS.MULTILINGUAL_BALANCED });
 
 const PORT = Number(process.env.PORT) || 10000;
 
@@ -286,8 +289,8 @@ const HTML_PAGE = `<!DOCTYPE html>
       </div>
 
       <div class="form-group">
-        <label for="task">Objetivo da Tarefa: <span class="label-hint">(Contextualiza o domínio da decisão)</span></label>
-        <input type="text" id="task" placeholder="Ex: identificar o departamento de atendimento adequado">
+        <label for="task">Objetivo da Tarefa: <span class="label-hint">(Opcional — útil apenas quando as opções forem rótulos simples sem descrição)</span></label>
+        <input type="text" id="task" placeholder="Opcional. Deixe em branco quando usar opções descritivas">
       </div>
 
       <div class="form-group">
@@ -333,7 +336,7 @@ const HTML_PAGE = `<!DOCTYPE html>
   <script>
     const presets = {
       support: {
-        task: "identificar o departamento de atendimento adequado",
+        task: "",
         state: "O aplicativo fecha com tela branca imediatamente após o login do usuário.",
         choices: [
           "suporte_tecnico: bugs no aplicativo, tela branca, falhas de software, travamentos técnicos e erros no login",
@@ -342,16 +345,16 @@ const HTML_PAGE = `<!DOCTYPE html>
         ].join('\\n')
       },
       churn: {
-        task: "avaliar o risco de cancelamento do cliente",
+        task: "",
         state: "Cliente há 2 anos, abriu 3 reclamações nesta semana e ameaçou cancelar no ReclameAqui.",
         choices: [
-          "alto_risco: cliente insatisfeito com múltiplas reclamações graves e ameaça de cancelamento iminente",
-          "medio_risco: cliente em dúvida com uso moderado",
-          "baixo_risco: cliente satisfeito, feliz e sem reclamações"
+          "alto_risco: cliente insatisfeito com reclamações e ameaça de cancelamento",
+          "medio_risco: cliente com dúvidas e atrito moderado",
+          "baixo_risco: cliente satisfeito, feliz, sem reclamações e tudo funcionando bem"
         ].join('\\n')
       },
       lead: {
-        task: "avaliar o nível de prioridade comercial do cliente",
+        task: "",
         state: "Sou diretor de tecnologia em uma empresa com 500 colaboradores e precisamos migrar o sistema com urgência neste mês.",
         choices: [
           "alta_prioridade: empresa de grande porte com urgência imediata e alto valor comercial",
@@ -360,7 +363,7 @@ const HTML_PAGE = `<!DOCTYPE html>
         ].join('\\n')
       },
       moderation: {
-        task: "moderar avaliação de cliente",
+        task: "",
         state: "Excelente atendimento, o produto chegou antes do prazo e muito bem embalado! Recomendo!",
         choices: [
           "aprovado: elogio legítimo sobre a entrega rápida e excelente qualidade do produto",
