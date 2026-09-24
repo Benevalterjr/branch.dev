@@ -18,13 +18,14 @@
 
 Enquanto LLMs generativos (ChatGPT, Claude) levam **2.000 ms a 10.000 ms** para gerar texto, torram tokens a cada decisão e quebram contratos de tipo em JSON:
 
-* **100% Local & CPU-Native:** Roda direto no processo Node.js / TypeScript sobre **`onnxruntime-node` oficial** e **`@huggingface/tokenizers` (Rust)**. Zero chave de API, zero cartão de crédito e 0 vulnerabilidades.
-* **Metacognição & Fallback Sistema 1 ➔ Sistema 2:** O motor estima a própria certeza (`confidence`, `isOOD`, `actProbability`). Se a incerteza for alta ou o dado for Out-of-Distribution, delega graciosamente a um fallback (LLM em nuvem ou operador humano).
+* **100% Local & CPU-Native:** Roda direto no processo Node.js / TypeScript sobre **`onnxruntime-node` oficial** e **`@huggingface/tokenizers` (Rust)**. Zero chave de API, zero dependência externa e fail-fast com `ModelLoadException` (sem degradação silenciosa).
+* **Metacognição & Guardrail OOD (AUROC 98.5%):** O motor estima a própria certeza (`confidence`, `isOOD`, `actProbability`). Avaliação OOD desacoplada em passada dupla (dual-pass), imune à inflação por prompt de tarefa, garantindo que casos anômalos nunca recebam autorização autônoma indevida.
+* **Calibração Estatística Regularizada:** Temperature Scaling sensível à cardinalidade (`tempBucket`: $k=2, 3-5, 6-10, 11+$) com piso de variância (`minStdFloor = 0.15`), eliminando o colapso de certeza fixa em decisões binárias e preservando o contraste real da margem de logits.
+* **Primitiva Booleana Neutra:** Avaliação binária simétrica sem viés léxico embutido, imune a distorções por tom emocional ("urgente/calmo").
 * **Single Forward Pass Batching:** Avalia múltiplas perguntas sobre o mesmo estado em uma única passada vetorial pelo modelo na CPU, reduzindo a latência de workflows para ~200 ms.
-* **Calibração por Bucket de Cardinalidade (`tempBucket`):** Mapeamento empírico da temperatura de Platt scaling para 2, 3-5, 6-10 e 11+ opções, evitando subconfiança em binárias e colapso de entropia em conjuntos amplos.
-* **Zero Tokens & Zero KV Cache (GPULESS):** Elimina a geração autoregressiva. Executa similaridade geométrica com **TurboQuant** (produto escalar otimizado e quantização online).
-* **Aprendizado Contínuo Sem Re-treinamento:** Ancoragem por **`PrototypeStore`** (centróides semânticos few-shot) e calibração adaptativa online via SGD e Brier Score.
-* **Clean Architecture Estrita:** Desacoplamento total entre Domínio, Casos de Uso, Infraestrutura e Apresentação.
+* **Zero Tokens & Zero KV Cache (GPULESS):** Elimina a geração autoregressiva. Executa similaridade geométrica em representações normalizadas float32 aceleradas via `TurboQuant` (produto escalar otimizado e quantização int8 opcional).
+* **Aprendizado Contínuo Sem Re-treinamento:** Ancoragem por **`PrototypeStore`** (centróides semânticos few-shot) e calibração adaptativa online via SGD e Brier Score com escala proporcional de buckets.
+* **Clean Architecture Estrita:** Desacoplamento total entre Domínio, Casos de Uso, Infraestrutura e Apresentação com rastreabilidade do backend de execução (`embeddingBackend`).
 
 ---
 

@@ -24,9 +24,15 @@ export interface CalibrationOptions {
 
   /**
    * Limiar de similaridade mínima para detecção de Out-of-Distribution (OOD).
-   * Se o maior logit for inferior a esse limiar, a entrada é classificada como OOD (padrão: 0.15).
+   * Se o maior logit for inferior a esse limiar, a entrada é classificada como OOD (padrão calibrado: 0.27).
    */
   oodThreshold?: number;
+
+  /**
+   * Logits brutos puros (sem distorção de prefixo de tarefa) exclusivos para avaliação de OOD.
+   * Se fornecido, o guardrail de OOD utiliza esse vetor em vez dos logits discriminativos.
+   */
+  pureOodLogits?: number[];
 
   /**
    * Piso mínimo de desvio padrão (Variance Floor) para regularização de Z-Score.

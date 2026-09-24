@@ -81,3 +81,10 @@ export class LowConfidenceException extends DomainException {
     this.threshold = threshold;
   }
 }
+
+export class ModelLoadException extends DomainException {
+  constructor(message: string) {
+    super(message, 'DOMAIN_MODEL_LOAD_FAILED');
+  }
+}
+

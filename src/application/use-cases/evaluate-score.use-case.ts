@@ -79,6 +79,7 @@ export class EvaluateScoreUseCase {
       system: "system1",
       actProbability: decision.isOOD ? 0.0 : scoreDecision.confidence,
       delegatedToFallback: false,
+      embeddingBackend: decision.embeddingBackend,
     };
 
     if (request.fallback && isUncertain) {
@@ -87,6 +88,7 @@ export class EvaluateScoreUseCase {
         return {
           ...baseResponse,
           score: fallbackResult,
+          confidence: 1.0,
           system: "system2",
           delegatedToFallback: true,
           actionPolicy: "AUTOMATE",
@@ -95,6 +97,7 @@ export class EvaluateScoreUseCase {
       return {
         ...baseResponse,
         ...fallbackResult,
+        confidence: fallbackResult.confidence ?? 1.0,
         system: "system2",
         delegatedToFallback: true,
         actionPolicy: fallbackResult.actionPolicy ?? "AUTOMATE",

@@ -5,7 +5,11 @@ import {
 } from "../../domain/ports/adaptive-calibrator.port.js";
 import { CalibrationOptions } from "../../domain/ports/calibrator.port.js";
 import { ProbabilityDistribution } from "../../domain/entities/probability.vo.js";
-import { PlattTemperatureCalibrator } from "./platt-calibrator.adapter.js";
+import {
+  PlattTemperatureCalibrator,
+  getCardinalityBucket,
+  DEFAULT_CARDINALITY_TEMPERATURES,
+} from "./platt-calibrator.adapter.js";
 
 export interface AdaptiveCalibratorConfig {
   /** Temperatura inicial de escala (padrão: 0.5) */
@@ -69,15 +73,33 @@ export class AdaptivePlattCalibrator
 
   /**
    * Calibra utilizando a temperatura adaptativa acumulada na instância.
+   * Preserva a diferenciação por cardinalidade escalando a temperatura de cada bucket
+   * pelo fator de aprendizado adaptativo: scaleFactor = this.temperature / this.initialTemperature.
    */
   public override calibrate<T extends string = string>(
     choices: readonly T[],
     rawLogits: number[],
     options?: CalibrationOptions
   ): ProbabilityDistribution<T> {
+    if (options?.temperature !== undefined) {
+      return super.calibrate<T>(choices, rawLogits, options);
+    }
+
+    const scaleFactor = this.initialTemperature > 0 ? this.temperature / this.initialTemperature : 1.0;
+    const bucket = getCardinalityBucket(choices.length);
+    const baseBucketTemp =
+      options?.temperatureByCardinality?.[bucket] ??
+      DEFAULT_CARDINALITY_TEMPERATURES[bucket] ??
+      this.initialTemperature;
+
+    const adaptedTemperature = Math.max(
+      this.minTemperature,
+      Math.min(this.maxTemperature, baseBucketTemp * scaleFactor)
+    );
+
     const effectiveOptions: CalibrationOptions = {
       ...options,
-      temperature: options?.temperature ?? this.temperature,
+      temperature: adaptedTemperature,
     };
     return super.calibrate<T>(choices, rawLogits, effectiveOptions);
   }

@@ -68,8 +68,7 @@ export class LocalDecisionEngine implements IDecisionEngine {
     // 2. Extrai embeddings das opções de decisão (armazenadas em cache persistente em memória)
     const choiceIds = params.candidates.map((c) => c.id);
     const candidateTexts = params.candidates.map((c) => {
-      // Para escolhas booleanas primitivas ("true" | "false"), a descrição já contém a semântica direta (ex: "SIM...", "NÃO...")
-      // e não deve ser poluída com identificadores em inglês ("true:", "false:") nem com a repetição da pergunta inteira.
+      // Para escolhas booleanas primitivas ("true" | "false"), a descrição já contém a semântica direta
       if (c.id === "true" || c.id === "false") {
         return c.description;
       }
@@ -88,32 +87,49 @@ export class LocalDecisionEngine implements IDecisionEngine {
       }
     }
 
-    // 3. Extrai embedding do estado no contexto da tarefa (passada única otimizada)
+    // 3. Extrai embedding do estado no contexto da tarefa (passada única otimizada para ranking discriminativo)
     const stateVector = await this.embeddingModel.embed(contextPrompt);
 
-    // 4. Calcula similaridades de cosseno (logits brutos)
+    // 4. Calcula similaridades de cosseno para ranking (logits brutos)
     const rawLogits: number[] = new Array(params.candidates.length);
-
     for (let i = 0; i < params.candidates.length; i++) {
-      const similarity = TurboQuant.dotProduct(stateVector, choiceVectors[i]);
-      rawLogits[i] = similarity;
+      rawLogits[i] = TurboQuant.dotProduct(stateVector, choiceVectors[i]);
     }
 
-    // 5. Detecção de Out-of-Distribution via limiar configurável
-    const oodThreshold = params.oodThreshold ?? 0.15;
+    // 4.1 Logits puros exclusivos para detecção OOD (desacoplados de qualquer prefixo de tarefa)
+    let pureOodLogits: number[] | undefined;
+    if (hasTask) {
+      const pureCandidateTexts = params.candidates.map((c) => {
+        if (c.id === "true" || c.id === "false") {
+          return c.description;
+        }
+        return c.id !== c.description ? `${c.id}: ${c.description}` : c.description;
+      });
+      const [pureStateVector, pureChoiceVectors] = await Promise.all([
+        this.embeddingModel.embed(params.state.canonicalText),
+        this.getOrEmbedBatch(pureCandidateTexts),
+      ]);
+      pureOodLogits = new Array(params.candidates.length);
+      for (let i = 0; i < params.candidates.length; i++) {
+        pureOodLogits[i] = TurboQuant.dotProduct(pureStateVector, pureChoiceVectors[i]);
+      }
+    }
 
+    // 5. Detecção de Out-of-Distribution e calibração estatística
     const distribution = this.calibrator.calibrate<T>(
       choiceIds,
       rawLogits,
       {
         temperature: params.temperature,
-        oodThreshold,
+        oodThreshold: params.oodThreshold,
+        pureOodLogits,
       }
     );
 
     const latencyMs = Number((performance.now() - startTime).toFixed(2));
+    const backend = this.embeddingModel.backend ?? "onnx";
 
-    return new Decision<T>(distribution, latencyMs);
+    return new Decision<T>(distribution, latencyMs, Date.now(), undefined, backend);
   }
 
   /**
@@ -134,9 +150,10 @@ export class LocalDecisionEngine implements IDecisionEngine {
     // 1. Prepara descrições de contexto e de escolhas para todos os itens do lote
     const preparedItems = batchParams.map((params) => {
       const hasTask = Boolean(params.taskDescription && params.taskDescription.trim().length > 0);
+      const pureStateText = params.state.canonicalText;
       const contextPrompt = hasTask
-        ? `Tarefa: ${params.taskDescription}\nContexto do Estado:\n${params.state.canonicalText}`
-        : params.state.canonicalText;
+        ? `Tarefa: ${params.taskDescription}\nContexto do Estado:\n${pureStateText}`
+        : pureStateText;
 
       const choiceIds = params.candidates.map((c) => c.id);
       const candidateTexts = params.candidates.map((c) => {
@@ -147,11 +164,21 @@ export class LocalDecisionEngine implements IDecisionEngine {
         return params.taskDescription ? `${params.taskDescription} -> ${label}` : label;
       });
 
+      const pureCandidateTexts = params.candidates.map((c) => {
+        if (c.id === "true" || c.id === "false") {
+          return c.description;
+        }
+        return c.id !== c.description ? `${c.id}: ${c.description}` : c.description;
+      });
+
       return {
         params,
+        hasTask,
+        pureStateText,
         contextPrompt,
         choiceIds,
         candidateTexts,
+        pureCandidateTexts,
       };
     });
 
@@ -165,6 +192,24 @@ export class LocalDecisionEngine implements IDecisionEngine {
         textToVectorMap.set(item.contextPrompt, cachedPrompt);
       } else {
         missingTextsSet.add(item.contextPrompt);
+      }
+
+      if (item.hasTask) {
+        const cachedPure = this.choiceEmbeddingCache.get(item.pureStateText);
+        if (cachedPure) {
+          textToVectorMap.set(item.pureStateText, cachedPure);
+        } else {
+          missingTextsSet.add(item.pureStateText);
+        }
+
+        for (const pureText of item.pureCandidateTexts) {
+          const cachedCand = this.choiceEmbeddingCache.get(pureText);
+          if (cachedCand) {
+            textToVectorMap.set(pureText, cachedCand);
+          } else {
+            missingTextsSet.add(pureText);
+          }
+        }
       }
 
       for (const candText of item.candidateTexts) {
@@ -221,17 +266,31 @@ export class LocalDecisionEngine implements IDecisionEngine {
         rawLogits[i] = TurboQuant.dotProduct(stateVector, choiceVectors[i]);
       }
 
-      const oodThreshold = item.params.oodThreshold ?? 0.15;
+      // Logits puros exclusivos para avaliação de OOD no lote
+      let pureOodLogits: number[] | undefined;
+      if (item.hasTask) {
+        const pureVec = textToVectorMap.get(item.pureStateText)!;
+        const pureChoiceVectors: Float32Array[] = item.pureCandidateTexts.map(
+          (t) => textToVectorMap.get(t)!
+        );
+        pureOodLogits = new Array(item.params.candidates.length);
+        for (let i = 0; i < item.params.candidates.length; i++) {
+          pureOodLogits[i] = TurboQuant.dotProduct(pureVec, pureChoiceVectors[i]);
+        }
+      }
+
       const distribution = this.calibrator.calibrate<T>(
         item.choiceIds,
         rawLogits,
         {
           temperature: item.params.temperature,
-          oodThreshold,
+          oodThreshold: item.params.oodThreshold,
+          pureOodLogits,
         }
       );
 
-      decisions.push(new Decision<T>(distribution, perItemLatency));
+      const backend = this.embeddingModel.backend ?? "onnx";
+      decisions.push(new Decision<T>(distribution, perItemLatency, Date.now(), undefined, backend));
     }
 
     return decisions;

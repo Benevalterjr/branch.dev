@@ -13,25 +13,27 @@ export class EvaluateBooleanUseCase {
   public async execute(request: BooleanRequestDto): Promise<BooleanResponseDto> {
     const stateContext = new StateContext(request.state);
 
+    const cleanQuestion = request.question.replace(/^[\s¿?]+|[\s?]+$/g, "").trim();
+
     const candidates: readonly ChoiceCandidate<"true" | "false">[] = [
       {
         id: "true",
         description:
           request.affirmativeDescription ??
-          `${request.question} - Sim / Yes / True (evidente, confirmado, urgente, afirmativo)`,
+          `Sim, confirmação afirmativa: ${cleanQuestion}`,
       },
       {
         id: "false",
         description:
           request.negativeDescription ??
-          `${request.question} - Não / No / False (não evidente, negado, calmo, negativo)`,
+          `Não, refutação ou inexistência: ${cleanQuestion}`,
       },
     ];
 
     const decision = await this.decisionEngine.evaluate<"true" | "false">({
       state: stateContext,
       candidates,
-      taskDescription: request.question,
+      taskDescription: undefined,
       temperature: request.temperature,
     });
 
@@ -56,6 +58,7 @@ export class EvaluateBooleanUseCase {
       system: "system1",
       actProbability: booleanDecision.isOOD ? 0.0 : booleanDecision.confidence,
       delegatedToFallback: false,
+      embeddingBackend: decision.embeddingBackend,
     };
 
     if (request.fallback && isUncertain) {
@@ -64,14 +67,19 @@ export class EvaluateBooleanUseCase {
         return {
           ...baseResponse,
           value: fallbackResult,
+          probability: fallbackResult ? 1.0 : 0.0,
+          confidence: 1.0,
           system: "system2",
           delegatedToFallback: true,
           actionPolicy: "AUTOMATE",
         };
       }
+      const valueChanged = fallbackResult.value !== undefined && fallbackResult.value !== baseResponse.value;
       return {
         ...baseResponse,
         ...fallbackResult,
+        probability: fallbackResult.probability ?? (valueChanged ? (fallbackResult.value ? 1.0 : 0.0) : baseResponse.probability),
+        confidence: fallbackResult.confidence ?? (valueChanged ? 1.0 : baseResponse.confidence),
         system: "system2",
         delegatedToFallback: true,
         actionPolicy: fallbackResult.actionPolicy ?? "AUTOMATE",

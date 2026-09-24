@@ -1,5 +1,6 @@
 import { ProbabilityDistribution } from "./probability.vo.js";
 import { LowConfidenceException } from "../exceptions/domain-exceptions.js";
+import type { EmbeddingBackend } from "../ports/embedding-model.port.js";
 
 /**
  * Política de Ação recomendada (Semáforo de Decisão):
@@ -28,12 +29,14 @@ export class Decision<T extends string = string> {
   public readonly normalizedEntropy: number;
   public readonly latencyMs: number;
   public readonly timestampMs: number;
+  public readonly embeddingBackend: EmbeddingBackend;
 
   constructor(
     distribution: ProbabilityDistribution<T>,
     latencyMs: number,
     timestampMs: number = Date.now(),
-    actionPolicyThresholds?: ActionPolicyThresholds
+    actionPolicyThresholds?: ActionPolicyThresholds,
+    embeddingBackend: EmbeddingBackend = "onnx"
   ) {
     this.distribution = distribution;
     this.winner = distribution.winner;
@@ -43,6 +46,7 @@ export class Decision<T extends string = string> {
     this.normalizedEntropy = distribution.normalizedEntropy;
     this.latencyMs = latencyMs;
     this.timestampMs = timestampMs;
+    this.embeddingBackend = embeddingBackend;
 
     const keys = Object.keys(distribution.toRecord());
     const k = keys.length || 2;

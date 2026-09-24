@@ -39,7 +39,7 @@ export class PlattTemperatureCalibrator implements ICalibrator {
 
   constructor(
     defaultTemperature: number = 0.5,
-    defaultOodThreshold: number = 0.15,
+    defaultOodThreshold: number = 0.28,
     temperatureByCardinality: Partial<Record<CardinalityBucket, number>> = {}
   ) {
     this.defaultTemperature = defaultTemperature;
@@ -72,11 +72,13 @@ export class PlattTemperatureCalibrator implements ICalibrator {
     const oodThreshold = options?.oodThreshold ?? this.defaultOodThreshold;
 
     // 1. Verificação de Out-of-Distribution (Distância Mínima ao Espaço das Opções)
-    let maxRawLogit = -Infinity;
-    for (const val of rawLogits) {
-      if (val > maxRawLogit) maxRawLogit = val;
+    // Usa logits puros (desacoplados de prompt de tarefa) quando disponíveis para evitar inflação espúria
+    const logitsForOod = options?.pureOodLogits ?? rawLogits;
+    let maxOodLogit = -Infinity;
+    for (const val of logitsForOod) {
+      if (val > maxOodLogit) maxOodLogit = val;
     }
-    const isOOD = maxRawLogit < oodThreshold;
+    const isOOD = maxOodLogit < oodThreshold;
 
     // Nota arquitetural: Dividir pelo desvio padrão sigma por consulta (Z-Score intra-query)
     // amplifica o contraste entre logits próximos. Isso é intencional para maximizar

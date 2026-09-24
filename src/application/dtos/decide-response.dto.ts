@@ -36,4 +36,8 @@ export interface DecideResponseDto<T extends string = string> {
    * Indica se a decisão foi resolvida por um fallback do Sistema 2.
    */
   delegatedToFallback?: boolean;
+  /**
+   * Identifica o backend vetorial utilizado ("onnx" para modelo neural real ou "hash-fallback" para fallback).
+   */
+  embeddingBackend?: "onnx" | "hash-fallback";
 }

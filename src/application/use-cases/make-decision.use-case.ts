@@ -58,23 +58,43 @@ export class MakeDecisionUseCase {
       system: "system1",
       actProbability: decision.isOOD ? 0.0 : decision.confidence,
       delegatedToFallback: false,
+      embeddingBackend: decision.embeddingBackend,
     };
 
     // 5. Acionamento do Fallback Sistema 2 se a decisão for incerta ou OOD
     if (request.fallback && isUncertain) {
       const fallbackResult = await request.fallback(baseResponse);
       if (typeof fallbackResult === "string") {
+        const fallbackProbabilities: Record<string, number> = {};
+        for (const c of candidates) {
+          fallbackProbabilities[c.id] = c.id === fallbackResult ? 1.0 : 0.0;
+        }
         return {
           ...baseResponse,
           winner: fallbackResult as T,
+          confidence: 1.0,
+          probabilities: fallbackProbabilities as Record<T, number>,
           system: "system2",
           delegatedToFallback: true,
           actionPolicy: "AUTOMATE",
         };
       }
+
+      const winnerChanged = fallbackResult.winner && fallbackResult.winner !== baseResponse.winner;
+      let probabilities = fallbackResult.probabilities ?? baseResponse.probabilities;
+      if (winnerChanged && !fallbackResult.probabilities) {
+        const updated: Record<string, number> = {};
+        for (const c of candidates) {
+          updated[c.id] = c.id === fallbackResult.winner ? 1.0 : 0.0;
+        }
+        probabilities = updated as Record<T, number>;
+      }
+
       return {
         ...baseResponse,
         ...fallbackResult,
+        probabilities,
+        confidence: fallbackResult.confidence ?? (winnerChanged ? 1.0 : baseResponse.confidence),
         system: "system2",
         delegatedToFallback: true,
         actionPolicy: fallbackResult.actionPolicy ?? "AUTOMATE",

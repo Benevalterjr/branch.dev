@@ -47,6 +47,11 @@ export interface BranchClientConfig {
   feedbackStore?: IFeedbackStore;
   /** Temperatura padrão para Platt scaling */
   defaultTemperature?: number;
+  /**
+   * Permite fallback para o motor de hash caso o carregamento do modelo ONNX falhe.
+   * Padrão: false (falha explícita com ModelLoadException).
+   */
+  allowFallback?: boolean;
 }
 
 /**
@@ -68,7 +73,9 @@ export class BranchClient {
   constructor(config: BranchClientConfig = {}) {
     this.embeddingModel =
       config.embeddingModel ??
-      new OnnxEmbeddingAdapter(config.modelName ?? BRANCH_EMBEDDING_MODELS.FAST_EN);
+      new OnnxEmbeddingAdapter(config.modelName ?? BRANCH_EMBEDDING_MODELS.FAST_EN, {
+        allowFallback: config.allowFallback ?? false,
+      });
 
     if (config.calibrator) {
       this.calibrator = config.calibrator;

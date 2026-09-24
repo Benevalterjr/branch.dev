@@ -1,6 +1,7 @@
 import * as ort from "onnxruntime-node";
 import { Tokenizer } from "@huggingface/tokenizers";
-import { IEmbeddingModel } from "../../domain/ports/embedding-model.port.js";
+import { IEmbeddingModel, EmbeddingBackend } from "../../domain/ports/embedding-model.port.js";
+import { ModelLoadException } from "../../domain/exceptions/domain-exceptions.js";
 import { readFile, stat, mkdir, rename } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
@@ -27,8 +28,19 @@ export type SupportedEmbeddingModel =
   | (typeof BRANCH_EMBEDDING_MODELS)[keyof typeof BRANCH_EMBEDDING_MODELS]
   | (string & {});
 
+export interface OnnxEmbeddingOptions {
+  modelName?: SupportedEmbeddingModel;
+  /** Se false (padrão), falhas ao carregar o modelo ONNX lançam erro em vez de degradar para hash silencioso. */
+  allowFallback?: boolean;
+}
+
 interface EmbeddingPipeline {
   embedBatch(texts: string[]): Promise<Float32Array[]>;
+}
+
+interface CachedPipelineEntry {
+  pipeline: EmbeddingPipeline;
+  backend: EmbeddingBackend;
 }
 
 /**
@@ -36,12 +48,30 @@ interface EmbeddingPipeline {
  * Executa 100% em CPU com grafo otimizado, sem dependências de frameworks pesados (sharp, python, pytorch).
  */
 export class OnnxEmbeddingAdapter implements IEmbeddingModel {
-  private static pipelineInstances = new Map<string, EmbeddingPipeline>();
-  private static loadingPromises = new Map<string, Promise<EmbeddingPipeline>>();
+  private static pipelineInstances = new Map<string, CachedPipelineEntry>();
+  private static loadingPromises = new Map<string, Promise<CachedPipelineEntry>>();
   private readonly modelName: string;
+  private readonly allowFallback: boolean;
+  private activeBackend: EmbeddingBackend = "onnx";
 
-  constructor(modelName: SupportedEmbeddingModel = BRANCH_EMBEDDING_MODELS.FAST_EN) {
-    this.modelName = modelName;
+  constructor(
+    modelOrConfig: SupportedEmbeddingModel | OnnxEmbeddingOptions = BRANCH_EMBEDDING_MODELS.FAST_EN,
+    options?: { allowFallback?: boolean }
+  ) {
+    if (typeof modelOrConfig === "object" && modelOrConfig !== null && !("slice" in modelOrConfig)) {
+      this.modelName = modelOrConfig.modelName ?? BRANCH_EMBEDDING_MODELS.FAST_EN;
+      this.allowFallback = modelOrConfig.allowFallback ?? false;
+    } else {
+      this.modelName = modelOrConfig as SupportedEmbeddingModel;
+      this.allowFallback = options?.allowFallback ?? (process.env.BRANCH_ALLOW_FALLBACK === "true");
+    }
+  }
+
+  /**
+   * Retorna o backend atualmente ativo ("onnx" para modelo neural real ou "hash-fallback").
+   */
+  public get backend(): EmbeddingBackend {
+    return this.activeBackend;
   }
 
   /**
@@ -50,7 +80,13 @@ export class OnnxEmbeddingAdapter implements IEmbeddingModel {
   private async getPipeline(): Promise<EmbeddingPipeline> {
     const cached = OnnxEmbeddingAdapter.pipelineInstances.get(this.modelName);
     if (cached) {
-      return cached;
+      if (cached.backend === "hash-fallback" && !this.allowFallback) {
+        throw new ModelLoadException(
+          `O modelo ONNX '${this.modelName}' falhou anteriormente e o fallback silencioso para hash está desativado (allowFallback: false).`
+        );
+      }
+      this.activeBackend = cached.backend;
+      return cached.pipeline;
     }
 
     let loadPromise = OnnxEmbeddingAdapter.loadingPromises.get(this.modelName);
@@ -59,24 +95,33 @@ export class OnnxEmbeddingAdapter implements IEmbeddingModel {
         try {
           const modelDir = await this.ensureModelBundle(this.modelName);
           const pipeline = await this.createOnnxPipeline(modelDir);
-          OnnxEmbeddingAdapter.pipelineInstances.set(this.modelName, pipeline);
-          return pipeline;
+          const entry: CachedPipelineEntry = { pipeline, backend: "onnx" };
+          OnnxEmbeddingAdapter.pipelineInstances.set(this.modelName, entry);
+          this.activeBackend = "onnx";
+          return entry;
         } catch (err) {
+          if (!this.allowFallback) {
+            throw new ModelLoadException(
+              `Falha ao carregar modelo ONNX '${this.modelName}': ${(err as Error).message}. O fallback silencioso para hash está desativado (allowFallback: false).`
+            );
+          }
           console.warn(
-            `[Branch.dev] Aviso: Falha ao carregar modelo ONNX '${this.modelName}' (${(err as Error).message}). Ativando Motor Semântico Local Integrado (Zero-Network Fallback).`
+            `[Branch.dev] Aviso: Falha ao carregar modelo ONNX '${this.modelName}' (${(err as Error).message}). Fallback autorizado: ativando Motor de Hash (Zero-Network Fallback).`
           );
           const fallback = this.createFallbackPipeline();
-          OnnxEmbeddingAdapter.pipelineInstances.set(this.modelName, fallback);
+          const entry: CachedPipelineEntry = { pipeline: fallback, backend: "hash-fallback" };
+          OnnxEmbeddingAdapter.pipelineInstances.set(this.modelName, entry);
+          this.activeBackend = "hash-fallback";
 
           // Retry após 60s
           setTimeout(() => {
             const current = OnnxEmbeddingAdapter.pipelineInstances.get(this.modelName);
-            if (current === fallback) {
+            if (current && current.pipeline === fallback) {
               OnnxEmbeddingAdapter.pipelineInstances.delete(this.modelName);
             }
           }, 60_000);
 
-          return fallback;
+          return entry;
         } finally {
           OnnxEmbeddingAdapter.loadingPromises.delete(this.modelName);
         }
@@ -85,7 +130,9 @@ export class OnnxEmbeddingAdapter implements IEmbeddingModel {
       OnnxEmbeddingAdapter.loadingPromises.set(this.modelName, loadPromise);
     }
 
-    return loadPromise;
+    const result = await loadPromise;
+    this.activeBackend = result.backend;
+    return result.pipeline;
   }
 
   /**
@@ -321,9 +368,9 @@ export class OnnxEmbeddingAdapter implements IEmbeddingModel {
     return vector;
   }
 
-  public async embedBatch(texts: string[]): Promise<Float32Array[]> {
+  public async embedBatch(texts: string[], type: "query" | "passage" = "passage"): Promise<Float32Array[]> {
     if (texts.length === 0) return [];
-    const processedTexts = texts.map((t) => this.applyModelPrefix(t, "passage"));
+    const processedTexts = texts.map((t) => this.applyModelPrefix(t, type));
     const pipe = await this.getPipeline();
     return pipe.embedBatch(processedTexts);
   }
